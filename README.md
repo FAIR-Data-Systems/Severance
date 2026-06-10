@@ -12,7 +12,7 @@ The name comes from the popular TV series [Severance](en.wikipedia.org/wiki/Seve
 * [Installing Internal](./internal/README.md)
 
 
-## Severed for Security: Users are Outside, Queries stay Inside)
+## Severed for Security: Users are Outside, Queries stay Inside
 
 **Query Flow Diagram**
 
