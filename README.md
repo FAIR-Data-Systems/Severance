@@ -33,6 +33,7 @@ The name comes from the popular TV series [Severance](en.wikipedia.org/wiki/Seve
 13. The Internal component runs with a RAM-based tempfile system, such that attempts to write to /tmp do not go to disk
 14. Code content of the Docker Containers is minimal - very low profile for security risks.
 15. Containers both run as unprivileged users
+16. Incoming query bindings are cleansed before being placed into a query, not merely quoted: `iri`-typed bindings are validated against the SPARQL 1.1 `IRIREF` grammar's disallowed characters and rejected outright (not sanitized and passed through) if invalid, and other typed bindings are quote-escaped. This closes off using a pre-approved query's own parameters as an injection vector to reach data outside that query's intended scope -- see CHANGELOG.md for the vulnerability this fixed.
 
 **Possible Attacks?**
 1. Modify queries - high impatct attack.  Likelihood?  Attacker needs to either a) secretly change the query in the GitHub so that a corrupted query is pulled by the Inside.  b) the Inside needs to forget to vet the queries they author or pull from GitHub (since this is voluntary and manual!) or c) the attacker is already inside the protected space and has file-level access to modify the query - in that case, there are bigger problems!  Most likely attacker profile for all of these is a rogue employee
