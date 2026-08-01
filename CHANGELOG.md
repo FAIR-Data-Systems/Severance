@@ -1,0 +1,25 @@
+# Changelog
+
+All notable changes to this project are documented here. Format loosely follows [Keep a Changelog](https://keepachangelog.com/).
+
+## [Unreleased]
+
+### Security
+
+- **Fixed a SPARQL injection vulnerability in `internal/innie.rb`'s binding substitution.** Any variable declared `iri` in a query's GRLC annotation (e.g. `?_disease_iri`) was wrapped in `<...>` with no validation of its contents. Since a SPARQL `IRIREF` has no escaping mechanism of its own (unlike a quoted string literal), a caller-supplied value containing a literal `>` could close the angle bracket early and inject arbitrary additional SPARQL — an extra `UNION`, `FILTER`, or graph pattern — directly into an otherwise pre-approved, named query. This defeated "queries are named and pre-approved, not arbitrary" as a security boundary: no new `query_id` was needed, only one existing `iri`-typed variable in any installed query, to read data well outside what that query's author intended (bounded only by whatever the Internal triplestore's own read-only credential can see, i.e. typically the whole repository).
+  - Fixed by validating every `iri`-typed binding against the SPARQL 1.1 `IRIREF` grammar's disallowed character set (`< > " { } | ^` \` `\`, and control/whitespace characters) before substitution, and rejecting the job outright — with a safe, zero-row result pushed back so the caller resolves promptly rather than hanging — if it fails. There is no safe way to escape an invalid IRI value the way a string literal can be escaped; an invalid one must be refused, not sanitized and passed through.
+  - The rejection path never executes the tainted query and never echoes the offending value back to the caller or into logs (only the variable name is logged), to avoid handing an attacker a probing oracle or a secondary log-injection surface.
+  - Found while designing a Beacon v2 facade for CARE-SM-2
+    (`CARE-Semantic-Model-Version-2` repo,
+    `implementation/Beacon2/`) that itself relies on several `iri`-typed
+    bindings (`sex`, `disease`, `symptom`) — the facade passes filter
+    values through with no sanitization of its own, so it depended
+    entirely on Severance's own escaping being correct. It wasn't; this
+    fix closes that gap at the layer that actually needs to own it
+    (Internal, where the query text and substitution logic live), rather
+    than pushing validation out to every client integration individually.
+
+### Added
+
+- `CHANGELOG.md` (this file).
+- `AUTH_TOKEN`'s real security properties (static bearer secret, replayable if ever exposed, blast radius bounded by the named-query design rather than the token itself) now documented explicitly in the top-level `README.md`'s "Possible Attacks?" list, `external/README.md`, and as a comment on the `AUTH_TOKEN` line in `external/env_template`.

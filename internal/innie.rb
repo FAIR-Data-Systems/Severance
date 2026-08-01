@@ -76,9 +76,69 @@ def decrypt(encrypted)
   cipher.update(ct) + cipher.final
 end
 
+# Encrypts `plaintext` and pushes it to External as job `uuid`'s result.
+# Zeroes and releases our own working copy after encrypting (mirrors the
+# hygiene already applied to real triplestore responses in the main loop
+# -- see "SECURE RESULT HANDLING" below). Used both for real results and
+# for the safe "no results" body pushed back when a job is rejected (see
+# InvalidIriError / empty_result_body).
+#
+# @param uuid [String] Job UUID
+# @param plaintext [String] Result body to encrypt and push
+def push_result(uuid, plaintext)
+  plaintext = plaintext.dup.force_encoding(Encoding::BINARY)
+  encrypted_result = encrypt(plaintext)
+  plaintext.replace("\0" * plaintext.bytesize)
+  plaintext.clear
+  GC.start(full_mark: true, immediate_sweep: true) if defined?(GC)
+
+  push_uri = URI("#{EXTERNAL_URL}/severance/jobs/#{uuid}/result")
+  http = Net::HTTP.new(push_uri.hostname, push_uri.port)
+  http.use_ssl = (push_uri.scheme == 'https')
+
+  push_req = Net::HTTP::Post.new(push_uri)
+  push_req['Content-Type'] = 'application/octet-stream'
+  push_req.body = encrypted_result
+
+  http.request(push_req)
+end
+
+# A safe, zero-row result body shaped to match RESULT_FORMAT, pushed when
+# a job is rejected before ever reaching the triplestore (see
+# InvalidIriError) -- so a rejected job still resolves promptly for the
+# caller instead of hanging until their own poll ceiling, without
+# executing or echoing back anything attacker-controlled.
+def empty_result_body
+  if RESULT_FORMAT == 'csv'
+    ''
+  else
+    JSON.generate({ 'head' => { 'vars' => [] }, 'results' => { 'bindings' => [] } })
+  end
+end
+
 # ------------------------------------------------------------------
 # Helper: Escape value for safe insertion into SPARQL
 # ------------------------------------------------------------------
+
+# Raised when a binding declared as `iri` contains a character that isn't
+# legal inside a SPARQL IRIREF. Deliberately carries only the variable
+# name, never the offending value -- see the note on InvalidIriError below.
+class InvalidIriError < StandardError; end
+
+# Characters forbidden inside a SPARQL IRIREF (SPARQL 1.1 grammar, §19.8):
+#   '<' ([^<>"{}|^`\]-[#x00-#x20])* '>'
+# i.e. an IRI's own content may not contain <, >, ", {, }, |, ^, backtick,
+# backslash, or any control/whitespace character (0x00-0x20 inclusive).
+INVALID_IRIREF_CHARS = /[\x00-\x20<>"{}|^`\\]/.freeze
+
+# Whether `value` is safe to place, unescaped, between < and > in a SPARQL
+# query. There is no valid *escaping* for a raw IRI the way there is for a
+# quoted string literal -- per the grammar, a value either only contains
+# legal IRIREF characters or it doesn't, so an invalid one must be
+# rejected outright, not sanitized and passed through.
+def valid_iriref?(value)
+  !value.match?(INVALID_IRIREF_CHARS)
+end
 
 # Replaces grlc-style parameters (`?_name_type` or `?__name_type`) in a SPARQL query
 # with properly escaped and typed values from the provided bindings.
@@ -89,6 +149,14 @@ end
 #                              (used to decide whether to treat a value as IRI)
 #
 # @return [String] The query with all parameters substituted
+# @raise [InvalidIriError] if an `iri`-typed binding contains a character
+#   that isn't legal inside a SPARQL IRIREF -- see the security note above
+#   InvalidIriError. Without this check, an attacker-controlled value for
+#   any iri-typed variable in ANY installed query could break out of the
+#   intended `<...>` and inject arbitrary additional SPARQL (a UNION, a
+#   FILTER, a completely different graph pattern) -- turning a
+#   pre-approved query into a vehicle for accessing data well outside
+#   what its author intended, with no new query_id required at all.
 def substitute_grlc_bindings(query, bindings, variable_types = {})
   return query if bindings.nil? || bindings.empty?
 
@@ -101,12 +169,15 @@ def substitute_grlc_bindings(query, bindings, variable_types = {})
     is_iri = variable_types[k.to_s]&.downcase == 'iri'
     warn "Variable '#{k}' is declared as IRI: #{is_iri}"
     escaped_value = if is_iri
-                      # Auto-wrap IRIs in < >
-                      if v.to_s.strip.start_with?('<') && v.to_s.strip.end_with?('>')
-                        v.to_s.strip
-                      else
-                        "<#{v.to_s.strip}>"
+                      stripped = v.to_s.strip
+                      # Un-wrap a caller-supplied <...> so we validate the
+                      # actual IRI content either way, not the brackets.
+                      bare = stripped.start_with?('<') && stripped.end_with?('>') ? stripped[1..-2] : stripped
+                      unless valid_iriref?(bare)
+                        raise InvalidIriError, "Binding '#{k}' declared as iri contains a character " \
+                                                'not permitted inside a SPARQL IRIREF (rejected, not substituted)'
                       end
+                      "<#{bare}>"
                     else
                       escape_for_sparql(v)
                     end
@@ -262,7 +333,23 @@ loop do
   warn "all_queries #{all_queries.inspect}"
 
   # === Bind grlc-style placeholders (?_key_type) ===
-  query = substitute_grlc_bindings(query, bindings, all_queries[query_id]['variable_types'])
+  begin
+    query = substitute_grlc_bindings(query, bindings, all_queries[query_id]['variable_types'])
+  rescue InvalidIriError => e
+    # Reject the job outright rather than executing anything -- see the
+    # security note on InvalidIriError above. Pushes a safe, zero-row
+    # result so the caller resolves promptly instead of hanging until
+    # their own poll ceiling, without ever running the tainted query or
+    # echoing back anything attacker-controlled.
+    warn "⚠ Rejected job #{uuid} for query #{query_id}: #{e.message}"
+    begin
+      push_result(uuid, empty_result_body)
+    rescue StandardError => push_error
+      warn "⚠ Failed to push rejection result for job #{uuid}: #{push_error.class} - #{push_error.message}"
+    end
+    sleep POLL_INTERVAL
+    next
+  end
   warn "Final query after binding:\n#{query}"
 
   validate_query(query) # currently a no-op, but can be expanded with real validation logic later
