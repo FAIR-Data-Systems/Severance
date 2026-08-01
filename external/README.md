@@ -31,6 +31,8 @@
 
 The `ENCRYPTION_KEY_HEX` must be shared with the external componenet, since all results are encrypted
 
+**A note on what `AUTH_TOKEN` actually protects against:** it's a static, unsigned bearer value - anyone who ever obtains it (a leaked `.env`, a compromised client machine, a value exposed client-side, e.g. in a browser's own Network tab if a client handles it there) can replay it indefinitely, from anywhere, with no way for External to tell a legitimate client from a replay. Treat it as a basic filter against casual/accidental access, not as proof of *who* is really calling. What actually bounds the damage from a stolen token is Severance's named-query design: a stolen `AUTH_TOKEN` only ever lets someone submit one of the queries you've already pre-approved and installed on Internal, with attacker-chosen values for that query's own variables - never arbitrary SPARQL, never the query text itself. Choose what queries you install accordingly, and rotate `AUTH_TOKEN` if you ever suspect it's been exposed.
+
 
 ### docker-compose
 
