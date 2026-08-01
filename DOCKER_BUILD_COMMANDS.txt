@@ -1,0 +1,19 @@
+Docker build commands for Severance -- always include the version.
+
+Bump VERSION, external/VERSION, and internal/VERSION together before a
+release, then build each component from its own directory:
+
+  cd external
+  docker build --build-arg SEVERANCE_VERSION="$(cat VERSION)" -t sevexternal:$(cat VERSION) .
+
+  cd ../internal
+  docker build --build-arg SEVERANCE_VERSION="$(cat VERSION)" -t sevinternal:$(cat VERSION) .
+
+Verify the version landed correctly:
+
+  docker inspect sevexternal:$(cat external/VERSION) --format '{{json .Config.Labels}}'
+  docker inspect sevinternal:$(cat internal/VERSION) --format '{{json .Config.Labels}}'
+
+The running services also report their own version without needing
+`docker inspect`: External's GET /severance includes it in its plain-text
+response; Internal logs it once at startup.
