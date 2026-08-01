@@ -1,68 +1,50 @@
-# ── Build stage ───────────────────────────────────────────────────────────────
-# The -dev variant includes compilers and build tools needed to compile native
-# gem extensions (C extensions).  Nothing from this stage lands in the final
-# image except the compiled gem bundle, so build-essential is never present at
-# runtime.
-FROM dhi.io/ruby:3-debian13-dev AS builder
+FROM ruby:3.2-slim
+
+# Plain public image, not a "hardened" vendor variant -- real-world security
+# scan comparisons (own patching pipeline: shell in, OS-level upgrade,
+# recommit) showed better results from this than from Docker Hardened
+# Images, so that's the deliberate choice here, not an oversight.
+
+# Install only build dependencies
+RUN apt-get update -qq && \
+    apt-get install -y --no-install-recommends \
+    build-essential \
+    && rm -rf /var/lib/apt/lists/*
 
 WORKDIR /app
 
-# Gem layer cached separately so a code-only change skips re-bundling.
+# === Gem caching layer ===
 COPY Gemfile Gemfile.lock ./
 RUN bundle install --jobs 4 --retry 3
 
-# Strip Windows CRLF line endings here while we have full tooling, so the
-# runtime image does not need sed.
-COPY entrypoint.sh /entrypoint.sh
-RUN sed -i 's/\r$//' /entrypoint.sh && chmod +x /entrypoint.sh
-
-
-# ── Runtime stage ─────────────────────────────────────────────────────────────
-# All DHI Ruby runtime variants (ruby:3, ruby:3-debian13) are distroless —
-# no /bin/sh — which is incompatible with the bash entrypoint script.
-# The -dev image is the only DHI Ruby image that ships a shell.  Using it here
-# still gives signed SBOMs, SLSA Level 3 provenance, and Docker-maintained
-# security patching; it just retains build tools in the runtime layer.
-# TODO: convert entrypoint.sh to a Ruby script to enable the truly minimal
-#       distroless runtime (dhi.io/ruby:3).
-FROM dhi.io/ruby:3-debian13-dev
-
-# Use numeric UID 0 rather than the name "root": DHI hardened images strip the
-# named root entry from /etc/passwd, so `USER root` causes Docker to fail with
-# "no matching entries in passwd file".  Numeric UIDs bypass that lookup.
-USER 0
-
-WORKDIR /app
-
-# Bring in the pre-compiled gem bundle — no compiler toolchain in this image.
-COPY --from=builder /usr/local/bundle /usr/local/bundle
-
-# Application source and protected read-only demo query set.
+# Copy application code
 COPY . .
+
+# Not just documentation -- innie.rb reads this same file (copied in via
+# `COPY . .` above) at startup and logs it, so the running version is
+# confirmable in container logs, not just on the image metadata.
+ARG SEVERANCE_VERSION
+LABEL org.opencontainers.image.title="severance-internal" \
+      org.opencontainers.image.version="${SEVERANCE_VERSION}" \
+      org.opencontainers.image.description="Severance: secure SPARQL service (Internal component)"
+
+# Copy demo queries to a protected location (never mounted)
 COPY sample_queries /demo-queries
 
-# Entrypoint already has CRLF stripped and +x set from the build stage.
-COPY --from=builder /entrypoint.sh /entrypoint.sh
+# Copy entrypoint and fix line endings
+COPY entrypoint.sh /entrypoint.sh
 
-# No named user account is needed here: the DHI image does not ship groupadd/
-# useradd, and more importantly the runtime UID/GID is injected entirely by
-# docker-compose's `user: "${UID:-1000}:${GID:-1000}"` directive anyway.
+# Create the queries directory in the image with correct permissions
+# (helps on first run, though the entrypoint will override)
+RUN mkdir -p /queries && \
+    chown -R "${UID:-1000}:${GID:-1000}" /queries 2>/dev/null || true
 
-# Pre-create /queries so Docker's bind-mount overlay starts from a known state.
-# The entrypoint re-chowns this to the real runtime UID/GID on every startup.
-RUN mkdir -p /queries && chown 1000:1000 /queries
+RUN sed -i 's/\r$//' /entrypoint.sh && \
+    chmod +x /entrypoint.sh
 
-# ── USER NOTE ─────────────────────────────────────────────────────────────────
-# We intentionally do NOT set a USER directive here.  docker-compose injects:
-#
-#   user: "${UID:-1000}:${GID:-1000}"
-#
-# which overrides any image-default user and makes the container run as the
-# host operator's own UID/GID.  That UID/GID is also passed as environment
-# variables (UID=, GID=) so the entrypoint's chown can match the owner of the
-# host-side ./queries bind-mount, ensuring the operator can edit query files
-# directly on the host without permission errors.
-#
-# Do not add a USER directive here without also updating docker-compose.
+# We will set the actual UID/GID at runtime via docker-compose (see below)
+# For now, create a placeholder user
+RUN groupadd -r severance && \
+    useradd -r -u 1000 -g severance -d /app -s /sbin/nologin severance
 
 ENTRYPOINT ["/entrypoint.sh"]

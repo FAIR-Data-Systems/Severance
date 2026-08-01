@@ -4,6 +4,13 @@
 
 A highly secure, very lightweight, query system
 
+**Version: see [`VERSION`](VERSION)** (currently `1.0.0`). `external/VERSION` and `internal/VERSION` are copies kept in sync for each component's own Docker build context -- bump all three together when releasing. Both `external/Dockerfile` and `internal/Dockerfile` bake this in as an `org.opencontainers.image.version` label via a `SEVERANCE_VERSION` build arg, e.g.:
+
+    docker build --build-arg SEVERANCE_VERSION="$(cat VERSION)" -t sevexternal:$(cat VERSION) external/
+    docker build --build-arg SEVERANCE_VERSION="$(cat VERSION)" -t sevinternal:$(cat VERSION) internal/
+
+The running services also report it themselves: External's `GET /severance` includes it in its plain-text response, and Internal logs it once at startup (it has no HTTP endpoint of its own to query it from).
+
 The name comes from the popular TV series [Severance](en.wikipedia.org/wiki/Severance_(TV_series)) where there is no communication between someone's "public facing self", and their "work self".  The transition happens while riding the elevator to their office (the project logo). The outside world is completely excluded from the internal, very sensitive business.
 
 ##  Install instructions (do things in this order!)

@@ -8,6 +8,13 @@ require_relative 'annotation_parser'
 
 include QueryAnnotationParser
 
+# Read once at boot from the same VERSION file the Dockerfile bakes in as an
+# OCI label. Internal has no HTTP endpoint of its own to query this from at
+# runtime (unlike External's GET /severance), so it's logged at startup
+# instead -- the only way to confirm it from a running container otherwise.
+SEVERANCE_VERSION = File.read(File.join(__dir__, 'VERSION')).strip
+warn "Innie starting (v#{SEVERANCE_VERSION})"
+
 # External service URL (e.g. the UI / orchestrator service)
 EXTERNAL_URL = ENV.fetch('EXTERNAL_URL', 'http://localhost')
 

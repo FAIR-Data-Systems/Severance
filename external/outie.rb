@@ -12,7 +12,16 @@ configure do
   set :bind, '0.0.0.0'
   set :port, ENV.fetch('PORT', 4567).to_i
   set :protection, except: :host_authorization
+  # Let `error` blocks (see JSON::ParserError below) handle exceptions
+  # regardless of RACK_ENV -- Sinatra's development-mode exception page
+  # would otherwise intercept them before a custom handler ever runs.
+  set :show_exceptions, :after_handler
 end
+
+# Read once at boot from the same VERSION file the Dockerfile bakes in as an
+# OCI label -- so the running service's version is queryable via GET
+# /severance, not just visible on the image metadata.
+SEVERANCE_VERSION = File.read(File.join(__dir__, 'VERSION')).strip
 
 # Directory where pending and processing jobs are stored
 QUEUE_DIR = ENV.fetch('QUEUE_DIR', '/data/queue')
@@ -329,5 +338,18 @@ end
 
 # Optional helper route - health check / info
 get '/severance' do
-  'Outie service ready. Use /severance/queries to submit jobs.'
+  "Outie service ready (v#{SEVERANCE_VERSION}). Use /severance/queries to submit jobs."
+end
+
+# Malformed JSON in a request body -- POST /severance/queries, the main
+# externally-facing endpoint, had no rescue around its JSON.parse at all,
+# so a caller sending broken JSON hit an unhandled exception (a generic
+# 500, indistinguishable from a real server-side fault) rather than a
+# clean 400. This is a catch-all safety net for any route in this file
+# that doesn't already handle it locally (POST /severance/available_queries
+# already has its own JSON::ParserError rescue, kept as-is).
+error JSON::ParserError do
+  content_type 'application/json'
+  status 400
+  { error: 'invalid_json' }.to_json
 end
