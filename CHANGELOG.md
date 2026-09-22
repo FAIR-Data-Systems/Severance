@@ -4,6 +4,17 @@ All notable changes to this project are documented here. Format loosely follows 
 
 ## [Unreleased]
 
+### Changed
+
+- `facades/shallot-facade` moved to its own dedicated repo,
+  [`FAIR-Data-Systems/Severance-Facades`](https://github.com/FAIR-Data-Systems/Severance-Facades),
+  alongside `beacon-facade` (which moved there from `CARE-Semantic-Model-Version-2`). Neither facade
+  had a real code dependency on the repo it previously lived in, and consolidating them eliminated the
+  cross-repo clone-and-push complexity `Security/security-patch.sh` had grown to patch beacon-facade
+  from here. `Security/security-patch.sh` here now only patches `sevinternal`/`sevexternal`; the
+  `pkg_mgr` (apt/apk) parameterization it needed for the Alpine-based facade images was removed along
+  with them. Full pre-move commit history for both facades is preserved in the new repo's own git log.
+
 ### Fixed
 
 - `facades/shallot-facade`'s image carried the base `ruby:3.2-alpine` image's own stale, vulnerable

@@ -8,14 +8,22 @@
 # result (rebuild, test, and either keep or `git checkout --` revert the changes). This script's job is
 # just "given a scan, make the best safe attempt, and say clearly what happened."
 #
-# Two fix strategies, matching what was proven by hand this session (see CHANGELOG.md's net-imap/erb/
+# Three fix strategies, matching what was proven by hand this session (see CHANGELOG.md's net-imap/erb/
 # resolv/puma entries):
 #
-# 1. **Declared dependency** (the gem is in Gemfile.lock -- something we actually use, e.g. puma):
-#    `bundle update <gem>`, constrained by whatever the Gemfile *already* says. Never loosens the
-#    existing constraint -- if the resolved version still doesn't reach a fixed version, that means the
-#    fix requires a constraint change (a real decision, e.g. a major version bump), which this script
-#    deliberately does NOT make on its own. Flagged as skipped, not silently left half-changed.
+# 1. **Declared dependency, fixable within its existing constraint** (the gem is in Gemfile.lock --
+#    something we actually use, e.g. puma): `bundle update <gem>`, constrained by whatever the Gemfile
+#    *already* says. Never loosens the existing constraint on this first attempt.
+#
+# 1b. **Declared dependency, fixable only by widening the constraint** (e.g. puma pinned `~> 6.0` when
+#    the fix needs `7.2.1+` -- a real major-version-crossing decision): unlike strategy 1, this DOES
+#    rewrite the Gemfile constraint -- to the fixed version Trivy reports -- then re-runs `bundle
+#    update`. This is exactly the class of change too risky to *keep* unreviewed, so it's still gated on
+#    the same build+test+boot verification as every other strategy, and the caller (security-patch.sh)
+#    still never merges it -- but the resulting PR is deliberately flagged as needing human review before
+#    merging, since crossing a major version can break compatibility in ways a boot smoke test won't
+#    catch. If even the widened constraint can't resolve to a working, fixed version, this falls back to
+#    skipped -- widening is attempted, not guaranteed.
 #
 # 2. **Phantom default gem** (not in Gemfile.lock at all -- a stale copy baked into the Ruby base image,
 #    unused by our own code, e.g. net-imap/erb/resolv): `bundle add` to resolve a real patched version,
@@ -114,10 +122,41 @@ findings.each do |pkg_name, vulns|
 
     after = resolved_version(lockfile_path, pkg_name)
     if !satisfies_any?(after, alternatives)
-      puts "SKIPPED #{pkg_name} (#{cve_ids}): existing Gemfile constraint can't reach a fixed version " \
-           "(resolved #{after}, need one of #{alternatives.map(&:to_s).join(' | ')}) -- needs a deliberate " \
-           'constraint change, not attempted automatically'
+      # === Strategy 1b: the existing constraint can't reach a fix -- try widening it to the fix itself ===
       git_revert(build_dir, 'Gemfile.lock')
+
+      gemfile_lines = File.readlines(gemfile_path)
+      line_index = gemfile_lines.index { |l| l =~ /^gem\s+["']#{Regexp.escape(pkg_name)}["']/ }
+      target = alternatives.last.to_s # the open-ended ">= x.y.z" branch, by convention the last one Trivy lists
+      original_line = line_index && gemfile_lines[line_index].dup
+      new_line = original_line&.sub(
+        /(gem\s+["']#{Regexp.escape(pkg_name)}["']\s*,\s*["'])[^"']+(["'])/, "\\1#{target}\\2"
+      )
+
+      if new_line.nil? || new_line == original_line
+        puts "SKIPPED #{pkg_name} (#{cve_ids}): existing Gemfile constraint can't reach a fixed version " \
+             "(resolved #{after}, need one of #{alternatives.map(&:to_s).join(' | ')}) -- needs a deliberate " \
+             'constraint change, and this script could not locate/parse its Gemfile line to attempt one'
+      else
+        gemfile_lines[line_index] = new_line
+        File.write(gemfile_path, gemfile_lines.join)
+        out2, ok2 = run("bundle update #{pkg_name.shellescape}", chdir: build_dir)
+        widened_after = ok2 ? resolved_version(lockfile_path, pkg_name) : nil
+
+        if ok2 && widened_after && satisfies_any?(widened_after, alternatives)
+          puts "PATCHED (WIDENED CONSTRAINT -- NEEDS REVIEW) #{pkg_name} #{before} -> #{widened_after} " \
+               "(#{cve_ids}) [Gemfile constraint changed from #{original_line.strip.inspect} to " \
+               "#{new_line.strip.inspect} -- the existing constraint couldn't reach a fixed version on its " \
+               'own; confirm this major-version-crossing bump is actually compatible before merging]'
+          any_change = true
+        else
+          reason = ok2 ? "resolved #{widened_after.inspect}" : "bundle update failed: #{out2.lines.last&.strip}"
+          puts "SKIPPED #{pkg_name} (#{cve_ids}): even widening the constraint to '#{target}' didn't " \
+               "produce a verifiably fixed version (#{reason}) -- needs manual investigation, not just a " \
+               'wider constraint'
+          git_revert(build_dir, 'Gemfile', 'Gemfile.lock')
+        end
+      end
     elsif after == before
       # Already at (or past) a fixed version before this ran -- e.g. shallot-facade's erb/resolv are
       # *declared* (exact-pinned) from an earlier manual fix, so this hits the declared-dependency

@@ -16,25 +16,20 @@ find ./security_scan_output -maxdepth 1 -type f \( -name '*.json' -o -name '*.cs
 AUTOPATCH_QUEUE=$(mktemp)
 trap 'rm -f "${AUTOPATCH_QUEUE}"' EXIT
 
-# All four images patched by this script are ours (built from source in this
-# repo -- external/, internal/, facades/shallot-facade), so each one gets
-# built fresh from source first -- not just OS-patched on top of a stale
-# previous build -- so any Dockerfile-level fix (a dependency bump, a
-# hardening change) actually reaches the patched image, not only the OS
-# package layer. The OS layer is then patched on top of that fresh build
-# (shell in, apt/apk update+upgrade, commit) rather than baked into the
-# Dockerfile itself, since re-running this script regularly is what actually
-# keeps the OS layer current -- a Dockerfile-baked dist-upgrade would only be
-# as fresh as whenever the Dockerfile itself was last built.
+# Both images patched by this script are ours (built from source in this repo -- external/,
+# internal/), so each one gets built fresh from source first -- not just OS-patched on top of a stale
+# previous build -- so any Dockerfile-level fix (a dependency bump, a hardening change) actually
+# reaches the patched image, not only the OS package layer. The OS layer is then patched on top of that
+# fresh build (shell in, apt update+upgrade, commit) rather than baked into the Dockerfile itself, since
+# re-running this script regularly is what actually keeps the OS layer current -- a Dockerfile-baked
+# dist-upgrade would only be as fresh as whenever the Dockerfile itself was last built.
 #
-# Two base OS families exist across these images (external/internal are
-# ruby:3.2-slim, i.e. Debian/apt; shallot-facade is ruby:3.2-alpine, i.e.
-# apk), so the OS-patch step is parameterized by package manager rather than
-# hardcoded to apt as it was when this function only ever patched the first
-# two. The image's own build-arg name for its baked-in VERSION label also
-# isn't shared (SEVERANCE_VERSION for external/internal; SHALLOT_FACADE_VERSION
-# for its facade -- each project's own env-var-prefix convention, kept as-is
-# rather than forced into a shared name).
+# Both images share one base OS family (ruby:3.2-slim, i.e. Debian/apt). This script used to also
+# patch a third, Alpine/apk-based image (shallot-facade) and, cloned fresh each run, a fourth
+# (beacon-facade, from CARE-Semantic-Model-Version-2) -- both moved to their own dedicated repo,
+# FAIR-Data-Systems/Severance-Facades, on 2026-09-22 (see that repo's own Security/security-patch.sh,
+# and this repo's CHANGELOG.md for why). The pkg_mgr parameterization and beacon's cross-repo
+# clone-and-push logic that move made unnecessary here were removed, not carried forward as dead code.
 #
 # After the OS-level patch, if the image has a Gemfile, attempts an automated Ruby gem CVE patch
 # (auto_patch_ruby_gems.rb) against this run's own fresh scan -- see that script for the two
@@ -47,14 +42,13 @@ trap 'rm -f "${AUTOPATCH_QUEUE}"' EXIT
 #
 # Every scan (pre- and, if applicable, post-autopatch) is also annotated by annotate_gem_shadowing.rb:
 # whether a flagged gemspec finding is a stale on-disk copy `bundle exec` never actually loads (see
-# CHANGELOG.md's erb/resolv entries), vs a real, still-reachable one. Must run while build_dir (and its
-# Gemfile.lock) still exists -- for beacon-facade, a temp clone removed once patch_image returns.
+# CHANGELOG.md's erb/resolv entries), vs a real, still-reachable one.
 #
 # All progress output below goes to stderr; the final `fairdatasystems/
 # <name>:<timestamp>` tag is the only thing written to stdout, so callers can
 # capture it with `tag=$(patch_image ...)` while still seeing live progress.
 patch_image() {
-  local name="$1" build_dir="$2" version_file="$3" version_arg="$4" pkg_mgr="$5" test_cmd="${6:-}"
+  local name="$1" build_dir="$2" version_file="$3" version_arg="$4" test_cmd="${5:-}"
   local build_tag="${name}:build-${timestamp}"
   local working_tag="fairdatasystems/${name}:${timestamp}"
   local outputfile="${SCRIPT_DIR}/security_scan_output/scanresults_${name}_${timestamp}.json"
@@ -83,18 +77,10 @@ patch_image() {
   docker run -d --name "${name}" -e "ENCRYPTION_KEY_HEX=${patch_key}" "${build_tag}" >&2
   sleep 2
   echo "updating ${name}" >&2
-  if [ "${pkg_mgr}" = "apk" ]; then
-    # -u root: these images (unlike external/internal, which have no USER
-    # directive and default to root) bake in a non-root USER, so a plain
-    # `docker exec` would run as that user and apk would fail with a
-    # permission error -- matching Sextans-Suite's own Alpine-image handling.
-    docker exec -u root "${name}" sh -c "apk update && apk upgrade --no-cache --force-missing-repositories" >&2
-  else
-    docker exec "${name}" apt-get -y update >&2
-    docker exec "${name}" apt-get -y dist-upgrade --fix-missing >&2
-    docker start "${name}" >/dev/null 2>&1 || true
-    docker exec "${name}" apt-get -y autoclean >&2
-  fi
+  docker exec "${name}" apt-get -y update >&2
+  docker exec "${name}" apt-get -y dist-upgrade --fix-missing >&2
+  docker start "${name}" >/dev/null 2>&1 || true
+  docker exec "${name}" apt-get -y autoclean >&2
   echo "commit" >&2
   docker commit "${name}" "${working_tag}" >&2
   docker stop "${name}" >/dev/null
@@ -126,7 +112,7 @@ patch_image() {
         if [ -n "${test_cmd}" ]; then
           (cd "${build_dir}" && eval "${test_cmd}") >&2 && tests_ok=0 || tests_ok=1
         else
-          tests_ok=0 # no test suite for this image (e.g. beacon-facade) -- boot smoke test is the gate
+          tests_ok=0 # no test suite for this image -- boot smoke test is the gate
         fi
       fi
 
@@ -149,14 +135,10 @@ patch_image() {
         patch_key=$(openssl rand -hex 32)
         docker run -d --name "${name}" -e "ENCRYPTION_KEY_HEX=${patch_key}" "${autopatch_build_tag}" >&2
         sleep 2
-        if [ "${pkg_mgr}" = "apk" ]; then
-          docker exec -u root "${name}" sh -c "apk update && apk upgrade --no-cache --force-missing-repositories" >&2
-        else
-          docker exec "${name}" apt-get -y update >&2
-          docker exec "${name}" apt-get -y dist-upgrade --fix-missing >&2
-          docker start "${name}" >/dev/null 2>&1 || true
-          docker exec "${name}" apt-get -y autoclean >&2
-        fi
+        docker exec "${name}" apt-get -y update >&2
+        docker exec "${name}" apt-get -y dist-upgrade --fix-missing >&2
+        docker start "${name}" >/dev/null 2>&1 || true
+        docker exec "${name}" apt-get -y autoclean >&2
         docker commit "${name}" "${working_tag}" >&2
         docker stop "${name}" >/dev/null
         docker rm "${name}" >/dev/null
@@ -164,15 +146,22 @@ patch_image() {
           "${working_tag}" > "${outputfile}"
         ruby "${SCRIPT_DIR}/annotate_gem_shadowing.rb" "${outputfile}" "${build_dir}" >&2 || true
 
-        local branch title original_branch
+        local branch title original_branch title_prefix
         branch="autopatch-gems-${name}-${timestamp}"
-        title="Auto-patch Ruby gem CVEs in ${name} (${timestamp})"
+        # A widened-constraint fix (auto_patch_ruby_gems.rb's strategy 1b) crosses a version boundary
+        # the existing Gemfile constraint couldn't reach on its own -- still verified (build/test/boot),
+        # but a boot smoke test can't catch every compatibility break a major bump might cause, so flag
+        # it in the PR title itself, not just buried in the commit body, so it doesn't get rubber-stamped
+        # alongside routine same-constraint/phantom-gem patches.
+        title_prefix=""
+        echo "${autopatch_log}" | grep -q "WIDENED CONSTRAINT" && title_prefix="[REVIEW: major version bump] "
+        title="${title_prefix}Auto-patch Ruby gem CVEs in ${name} (${timestamp})"
         # `git checkout -b` inside build_dir changes the REPO's checked-out branch, not just this
-        # subshell's -- subshells isolate cwd/variables, never git's on-disk HEAD. For internal/
-        # external/shallot-facade, build_dir is a subdirectory of this very repo, shared across every
-        # patch_image() call in this run -- left unrestored, a later image would build from this new
-        # branch instead of the one the run started on, and the run would leave the caller's own
-        # checkout switched to it. Capture and restore immediately after committing.
+        # subshell's -- subshells isolate cwd/variables, never git's on-disk HEAD. build_dir is a
+        # subdirectory of this very repo, shared across every patch_image() call in this run -- left
+        # unrestored, a later image would build from this new branch instead of the one the run started
+        # on, and the run would leave the caller's own checkout switched to it. Capture and restore
+        # immediately after committing.
         original_branch=$(cd "${build_dir}" && git rev-parse --abbrev-ref HEAD)
         (cd "${build_dir}" && git checkout -q -b "${branch}" \
           && git add Gemfile Gemfile.lock Dockerfile \
@@ -209,56 +198,46 @@ open_autopatch_pr() {
   local repo_path="$1" branch="$2" title="$3"
   echo "" >&2
   echo "=== opening PR for ${repo_path} (branch ${branch}) ===" >&2
+  local body="Automated Ruby gem CVE patch attempt, opened by \`security-patch.sh\`. Verified: image builds, tests pass, boots correctly, re-scanned to confirm the finding is actually gone. See the commit message for exactly what changed and why. Not auto-merged -- please review before merging."
+  if [[ "${title}" == "[REVIEW: major version bump]"* ]]; then
+    body="${body}
+
+**This one crosses a major version boundary** the existing Gemfile constraint couldn't reach on its own (see the commit message for old -> new constraint). Build/tests/boot all passed, but that doesn't rule out a real behavioral incompatibility a smoke test wouldn't catch -- read the gem's changelog/release notes for breaking changes before merging, not just this PR's green checks."
+  fi
   (cd "${repo_path}" && git push -u origin "${branch}") >&2
-  (cd "${repo_path}" && gh pr create --title "${title}" --head "${branch}" --body \
-    "Automated Ruby gem CVE patch attempt, opened by \`security-patch.sh\`. Verified: image builds, tests pass, boots correctly, re-scanned to confirm the finding is actually gone. See the commit message for exactly what changed and why. Not auto-merged -- please review before merging.") >&2
+  (cd "${repo_path}" && gh pr create --title "${title}" --head "${branch}" --body "${body}") >&2
 }
 
-SIN=$(patch_image sevinternal ../internal ../internal/VERSION SEVERANCE_VERSION apt \
+SIN=$(patch_image sevinternal ../internal ../internal/VERSION SEVERANCE_VERSION \
   "bundle exec rspec")
-SOUT=$(patch_image sevexternal ../external ../external/VERSION SEVERANCE_VERSION apt \
+SOUT=$(patch_image sevexternal ../external ../external/VERSION SEVERANCE_VERSION \
   "bundle exec ruby check_before_filter.rb")
-SFAC=$(patch_image shallotfacade ../facades/shallot-facade ../facades/shallot-facade/VERSION \
-  SHALLOT_FACADE_VERSION apk "bundle exec rspec")
 
 cp inner-docker-compose-template-template.yml inner-docker-compose-template-tmp.yml
 cp outer-docker-compose-template-template.yml outer-docker-compose-template-tmp.yml
-cp shallot-docker-compose-template-template.yml shallot-docker-compose-template-tmp.yml
 sed -i'' -e "s!{SIN}!${SIN}!" "inner-docker-compose-template-tmp.yml"
 sed -i'' -e "s!{SOUT}!${SOUT}!" "outer-docker-compose-template-tmp.yml"
-sed -i'' -e "s!{SFAC}!${SFAC}!" "shallot-docker-compose-template-tmp.yml"
 
 mv inner-docker-compose-template-tmp.yml ../internal/docker-compose.yml
 mv outer-docker-compose-template-tmp.yml ../external/docker-compose.yml
-mv shallot-docker-compose-template-tmp.yml ../facades/shallot-facade/docker-compose.yml
 
-# beacon-facade lives in a different repo (CARE-Semantic-Model-Version-2), not a sibling in
-# this one, unlike shallot-facade -- it's domain-specific (real CARE-SM-2/ERDERA ontology
-# terms, response shaping built for RDVP-Portal-backend specifically), where shallot-facade is
-# pure protocol translation with no knowledge of any data model. Still patched from here,
-# though: Sextans-Suite's own pipeline already clones this same repo to build its "care2"
-# image from implementation/Toolkit, so one pipeline building an image from another repo's
-# committed (never local/uncommitted) source is already an established pattern, not a new kind
-# of coupling. Unlike care2 (whose tag is substituted into Sextans' own compose templates),
-# nothing in Severance consumes a beacon-facade tag, so there is no downstream template to
-# write it into -- the tag is just printed, same as Sextans already does for care2/fdpserv2;
-# update CARE-Semantic-Model-Version-2's own implementation/Beacon2/facade/docker-compose.yml
-# by hand (or from that repo's own tooling, if it grows one). No test suite exists there yet
-# (see CHANGELOG.md) -- the boot smoke test is its only auto-patch gate.
-beacon_clone_dir=$(mktemp -d)
-git clone https://github.com/wilkinsonlab/CARE-Semantic-Model-Version-2.git "${beacon_clone_dir}" >&2
-BFAC=$(patch_image beaconfacade "${beacon_clone_dir}/implementation/Beacon2/facade" \
-  "${beacon_clone_dir}/implementation/Beacon2/facade/VERSION" BEACON_FACADE_VERSION apk)
-echo "beacon-facade patched: ${BFAC}" >&2
-echo "  -> update CARE-Semantic-Model-Version-2's implementation/Beacon2/facade/docker-compose.yml by hand" >&2
+# Auto-commit + push these two tag bumps directly (no PR) -- they're pure version-pointer changes
+# to files this same repo owns, the same trust level as everything else this script already commits
+# to a working tree without review. Scoped to just these two paths so it can never sweep up
+# unrelated in-progress changes elsewhere in the caller's checkout. If the current branch has no
+# upstream yet, `git push` fails loudly (set -euo pipefail) rather than silently not pushing.
+if ! git -C .. diff --quiet -- internal/docker-compose.yml external/docker-compose.yml; then
+  git -C .. add internal/docker-compose.yml external/docker-compose.yml
+  git -C .. commit -q -m "Bump Severance image tags to ${timestamp} (security-patch.sh)
 
-# Open any queued auto-patch PRs before cleaning up build dirs (beacon_clone_dir must still exist if
-# it has a queued commit -- open_autopatch_pr pushes straight from it).
+Co-Authored-By: Claude Sonnet 5 <noreply@anthropic.com>"
+  git -C .. push
+fi
+
+# Open any queued auto-patch PRs.
 while IFS='|' read -r repo_path branch title; do
   [ -n "${repo_path}" ] && open_autopatch_pr "${repo_path}" "${branch}" "${title}"
 done < "${AUTOPATCH_QUEUE}"
-
-rm -rf "${beacon_clone_dir}"
 
 ruby parse-security-scans.rb ./security_scan_output/*.json
 python3 build_register.py
