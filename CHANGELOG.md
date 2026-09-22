@@ -4,6 +4,21 @@ All notable changes to this project are documented here. Format loosely follows 
 
 ## [Unreleased]
 
+### Added
+
+- **`facades/shallot-facade/`** -- a new Sinatra app that makes Severance look like a
+  [Shallot](https://github.com/wilkinsonlab/shallot)/GRLC-shaped service to any caller: one synchronous
+  `GET /<query_id>?param=...` route per query, plus a Swagger 2.0 document at `GET /openapi.json`, both
+  built dynamically from `GET /severance/available_queries` -- no `.rq` files read directly, no
+  domain-specific knowledge, so it works unmodified for any project's queries. Exists so callers built
+  against Shallot's interface (e.g. the FLAIR-GG Virtual Platform's data-service layer) can call a
+  Severance-backed query with no code change of their own. Structured like the existing
+  CARE-SM-2-specific `Beacon2/facade` (a sibling project, not in this repo), but domain-agnostic, so it
+  lives here as a reusable capability of Severance itself. Needs the `before`-filter fix above to reach
+  `GET /severance/jobs/:uuid` and `GET /severance/available_queries` at all. See
+  `facades/shallot-facade/README.md`. Not yet tested against a real Severance + Virtuoso instance --
+  only unit-level specs stubbing `SeveranceClient`.
+
 ### Fixed
 
 - `external/outie.rb`'s `before` filter matched `/severance/jobs/` as a path *prefix* for its
