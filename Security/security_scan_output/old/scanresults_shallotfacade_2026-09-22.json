@@ -3,41 +3,40 @@
   "Trivy": {
     "Version": "0.69.1"
   },
-  "ReportID": "01a0c93d-8904-756b-a745-11257ea68f5e",
-  "CreatedAt": "2026-09-22T15:10:48.324359192+02:00",
-  "ArtifactID": "sha256:bfe3b3c623d19b74b5bcbfd61b7416781f72f451f5921ca4bc517dadbd9c37da",
-  "ArtifactName": "fairdatasystems/beaconfacade:2026-09-22",
+  "ReportID": "01a0c90b-dbf2-7caa-a182-dcaeaf184f41",
+  "CreatedAt": "2026-09-22T14:16:32.754834449+02:00",
+  "ArtifactID": "sha256:101b44267f79b1dcfd37b6f23e04261eb1e4b0ec196fb8583b76c19e8df10e8d",
+  "ArtifactName": "fairdatasystems/shallotfacade:2026-09-22",
   "ArtifactType": "container_image",
   "Metadata": {
-    "Size": 90130944,
+    "Size": 86949376,
     "OS": {
       "Family": "alpine",
       "Name": "3.23.4"
     },
-    "ImageID": "sha256:620c08a931de60643395de1010434cdc09064d6188fbbff5e0d0ce5bdf4ad557",
+    "ImageID": "sha256:3eca47fb466e18b959dbbdf7ab7d94fbbb1c41f00627f07b16184a166820bbe7",
     "DiffIDs": [
       "sha256:29df493baa13de438d6d2ece3a8333032e0b7b9b9d8cce4ee82194da255f61e1",
       "sha256:41c599a63faff835c672ce00e4bb14da13ecdd4b31c274f178223ea8ce94293a",
       "sha256:0f1f2c044176151c6fb5627b651bcc36a60e59edac7c7989901f20f72846f8ae",
       "sha256:aca248c6a71fa5c2164f7caf485b40fed54f4e0c5ffe47a2054d8a2ec2b1dec0",
-      "sha256:00a13d35bbb3091817ddb879b31cbc8d5b96aa4fe52ac1e14a8f54b411505975",
+      "sha256:f141a15cec26f94f81c71afe6afc5d8fbd2d6de47adc13da72fd22dfa914c550",
       "sha256:5f70bf18a086007016e948b04aed3b82103a36bea41755b6cddfaf10ace3c6ef",
-      "sha256:438a2e5f60bbf8acdae5442383f92deaf592e2c433cea13812f4cd9bb1daf586",
-      "sha256:e440547ad935d5d0dd2b4f4bbe17f0359b05604eb4a5958b198135e6675ec914",
-      "sha256:f5621dfb574fd116614b6a75081d58cc8cbe8a9a7899e85b4aa9091ab70f4f34",
-      "sha256:b2bde3e2f4bd7303ec67062899bd146d3b3cbf6bca8ed8cdd21cf3cd01914493",
-      "sha256:91493610d30a31f62d469a558e2c28938961e949e624d6b84cb78e16c4fbbb59"
+      "sha256:59d85fc22454af54cbe93a040d63a0a6db58bf3e514598e52f520b380ea7cf59",
+      "sha256:5f931a373dbf131cb098d2b992d19310d505085d4778bcd7497bc60af580de62",
+      "sha256:c5eb6dfb3795dab01db65d779b362b19d55a080f820e25a14557c4d50b1632e7",
+      "sha256:e95830ffb46f1627a87ff6470c8872618100dd33d1ba4df276c3e05ee04b7541"
     ],
     "RepoTags": [
-      "fairdatasystems/beaconfacade:2026-09-22"
+      "fairdatasystems/shallotfacade:2026-09-22"
     ],
     "RepoDigests": [
-      "fairdatasystems/beaconfacade@sha256:6bfa895d74da67698f74024315f32c7d6321bf8623c78bf75f4bebd400eaa5bd"
+      "fairdatasystems/shallotfacade@sha256:6d39503eb38e38808641852dc16ee25b56d15111146ab8c1b8a0997dce55a42f"
     ],
-    "Reference": "fairdatasystems/beaconfacade:2026-09-22",
+    "Reference": "fairdatasystems/shallotfacade:2026-09-22",
     "ImageConfig": {
       "architecture": "amd64",
-      "created": "2026-09-22T13:10:27.79557062Z",
+      "created": "2026-09-22T12:16:16.416611794Z",
       "docker_version": "28.2.2",
       "history": [
         {
@@ -115,74 +114,69 @@
           "empty_layer": true
         },
         {
-          "created": "2026-08-01T12:35:35Z",
-          "created_by": "RUN /bin/sh -c addgroup -S beacon \u0026\u0026     adduser -S -G beacon -h /app -s /sbin/nologin beacon # buildkit",
+          "created": "2026-09-22T07:54:52Z",
+          "created_by": "RUN /bin/sh -c addgroup -S shallotfacade \u0026\u0026     adduser -S -G shallotfacade -h /app -s /sbin/nologin shallotfacade # buildkit",
           "comment": "buildkit.dockerfile.v0"
         },
         {
-          "created": "2026-08-01T12:35:35Z",
+          "created": "2026-09-22T07:54:52Z",
           "created_by": "WORKDIR /app",
           "comment": "buildkit.dockerfile.v0"
         },
         {
-          "created": "2026-09-22T12:30:01Z",
+          "created": "2026-09-22T08:01:04Z",
           "created_by": "COPY /usr/local/bundle /usr/local/bundle # buildkit",
           "comment": "buildkit.dockerfile.v0"
         },
         {
-          "created": "2026-09-22T12:30:01Z",
-          "created_by": "COPY --chown=beacon:beacon Gemfile Gemfile.lock VERSION app.rb config.ru ./ # buildkit",
+          "created": "2026-09-22T10:25:32Z",
+          "created_by": "COPY --chown=shallotfacade:shallotfacade Gemfile Gemfile.lock VERSION app.rb config.ru ./ # buildkit",
           "comment": "buildkit.dockerfile.v0"
         },
         {
-          "created": "2026-09-22T12:30:01Z",
-          "created_by": "COPY --chown=beacon:beacon lib/ ./lib/ # buildkit",
+          "created": "2026-09-22T10:25:32Z",
+          "created_by": "COPY --chown=shallotfacade:shallotfacade lib/ ./lib/ # buildkit",
           "comment": "buildkit.dockerfile.v0"
         },
         {
-          "created": "2026-09-22T12:30:02Z",
-          "created_by": "RUN /bin/sh -c gem uninstall -i /usr/local/lib/ruby/gems/3.2.0 net-imap --all --force || true # buildkit",
-          "comment": "buildkit.dockerfile.v0"
-        },
-        {
-          "created": "2026-09-22T12:30:02Z",
-          "created_by": "ARG BEACON_FACADE_VERSION=0.1.0",
+          "created": "2026-09-22T10:25:32Z",
+          "created_by": "ARG SHALLOT_FACADE_VERSION=0.1.0",
           "comment": "buildkit.dockerfile.v0",
           "empty_layer": true
         },
         {
-          "created": "2026-09-22T12:30:02Z",
-          "created_by": "LABEL org.opencontainers.image.title=beacon-facade org.opencontainers.image.version=0.1.0 org.opencontainers.image.description=Beacon v2-shaped facade for CARE-SM-2 over Severance",
+          "created": "2026-09-22T10:25:32Z",
+          "created_by": "LABEL org.opencontainers.image.title=shallot-facade org.opencontainers.image.version=0.1.0 org.opencontainers.image.description=Shallot-shaped facade in front of Severance",
           "comment": "buildkit.dockerfile.v0",
           "empty_layer": true
         },
         {
-          "created": "2026-09-22T12:30:02Z",
-          "created_by": "USER beacon",
+          "created": "2026-09-22T10:25:32Z",
+          "created_by": "USER shallotfacade",
           "comment": "buildkit.dockerfile.v0",
           "empty_layer": true
         },
         {
-          "created": "2026-09-22T12:30:02Z",
-          "created_by": "ENV BEACON_PORT=4567 BEACON_BIND=0.0.0.0",
+          "created": "2026-09-22T10:25:32Z",
+          "created_by": "ENV SHALLOT_FACADE_PORT=4567 SHALLOT_FACADE_BIND=0.0.0.0",
           "comment": "buildkit.dockerfile.v0",
           "empty_layer": true
         },
         {
-          "created": "2026-09-22T12:30:02Z",
+          "created": "2026-09-22T10:25:32Z",
           "created_by": "EXPOSE map[4567/tcp:{}]",
           "comment": "buildkit.dockerfile.v0",
           "empty_layer": true
         },
         {
-          "created": "2026-09-22T12:30:02Z",
-          "created_by": "CMD [\"sh\" \"-c\" \"bundle exec rackup -o ${BEACON_BIND} -p ${BEACON_PORT}\"]",
+          "created": "2026-09-22T10:25:32Z",
+          "created_by": "CMD [\"sh\" \"-c\" \"bundle exec rackup -o ${SHALLOT_FACADE_BIND} -p ${SHALLOT_FACADE_PORT}\"]",
           "comment": "buildkit.dockerfile.v0",
           "empty_layer": true
         },
         {
-          "created": "2026-09-22T13:10:27Z",
-          "created_by": "sh -c bundle exec rackup -o ${BEACON_BIND} -p ${BEACON_PORT}"
+          "created": "2026-09-22T12:16:16Z",
+          "created_by": "sh -c bundle exec rackup -o ${SHALLOT_FACADE_BIND} -p ${SHALLOT_FACADE_PORT}"
         }
       ],
       "os": "linux",
@@ -193,23 +187,22 @@
           "sha256:41c599a63faff835c672ce00e4bb14da13ecdd4b31c274f178223ea8ce94293a",
           "sha256:0f1f2c044176151c6fb5627b651bcc36a60e59edac7c7989901f20f72846f8ae",
           "sha256:aca248c6a71fa5c2164f7caf485b40fed54f4e0c5ffe47a2054d8a2ec2b1dec0",
-          "sha256:00a13d35bbb3091817ddb879b31cbc8d5b96aa4fe52ac1e14a8f54b411505975",
+          "sha256:f141a15cec26f94f81c71afe6afc5d8fbd2d6de47adc13da72fd22dfa914c550",
           "sha256:5f70bf18a086007016e948b04aed3b82103a36bea41755b6cddfaf10ace3c6ef",
-          "sha256:438a2e5f60bbf8acdae5442383f92deaf592e2c433cea13812f4cd9bb1daf586",
-          "sha256:e440547ad935d5d0dd2b4f4bbe17f0359b05604eb4a5958b198135e6675ec914",
-          "sha256:f5621dfb574fd116614b6a75081d58cc8cbe8a9a7899e85b4aa9091ab70f4f34",
-          "sha256:b2bde3e2f4bd7303ec67062899bd146d3b3cbf6bca8ed8cdd21cf3cd01914493",
-          "sha256:91493610d30a31f62d469a558e2c28938961e949e624d6b84cb78e16c4fbbb59"
+          "sha256:59d85fc22454af54cbe93a040d63a0a6db58bf3e514598e52f520b380ea7cf59",
+          "sha256:5f931a373dbf131cb098d2b992d19310d505085d4778bcd7497bc60af580de62",
+          "sha256:c5eb6dfb3795dab01db65d779b362b19d55a080f820e25a14557c4d50b1632e7",
+          "sha256:e95830ffb46f1627a87ff6470c8872618100dd33d1ba4df276c3e05ee04b7541"
         ]
       },
       "config": {
         "Cmd": [
           "sh",
           "-c",
-          "bundle exec rackup -o ${BEACON_BIND} -p ${BEACON_PORT}"
+          "bundle exec rackup -o ${SHALLOT_FACADE_BIND} -p ${SHALLOT_FACADE_PORT}"
         ],
         "Env": [
-          "ENCRYPTION_KEY_HEX=8877cacbd5ead7edeab9b26c76798e1310525f8bdb6b1d76cb849599eb98c042",
+          "ENCRYPTION_KEY_HEX=71458ef6103e55d059eef95b30af419f2596fc25cdab194fa578e4a4b87c6865",
           "PATH=/usr/local/bundle/bin:/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin",
           "LANG=C.UTF-8",
           "RUBY_VERSION=3.2.11",
@@ -218,15 +211,15 @@
           "GEM_HOME=/usr/local/bundle",
           "BUNDLE_SILENCE_ROOT_WARNING=1",
           "BUNDLE_APP_CONFIG=/usr/local/bundle",
-          "BEACON_PORT=4567",
-          "BEACON_BIND=0.0.0.0"
+          "SHALLOT_FACADE_PORT=4567",
+          "SHALLOT_FACADE_BIND=0.0.0.0"
         ],
         "Labels": {
-          "org.opencontainers.image.description": "Beacon v2-shaped facade for CARE-SM-2 over Severance",
-          "org.opencontainers.image.title": "beacon-facade",
+          "org.opencontainers.image.description": "Shallot-shaped facade in front of Severance",
+          "org.opencontainers.image.title": "shallot-facade",
           "org.opencontainers.image.version": "0.1.0"
         },
-        "User": "beacon",
+        "User": "shallotfacade",
         "WorkingDir": "/app",
         "ExposedPorts": {
           "4567/tcp": {}
@@ -252,37 +245,33 @@
       },
       {
         "Size": 10240,
-        "DiffID": "sha256:00a13d35bbb3091817ddb879b31cbc8d5b96aa4fe52ac1e14a8f54b411505975"
+        "DiffID": "sha256:f141a15cec26f94f81c71afe6afc5d8fbd2d6de47adc13da72fd22dfa914c550"
       },
       {
         "Size": 1024,
         "DiffID": "sha256:5f70bf18a086007016e948b04aed3b82103a36bea41755b6cddfaf10ace3c6ef"
       },
       {
-        "Size": 11809280,
-        "DiffID": "sha256:438a2e5f60bbf8acdae5442383f92deaf592e2c433cea13812f4cd9bb1daf586"
+        "Size": 8634880,
+        "DiffID": "sha256:59d85fc22454af54cbe93a040d63a0a6db58bf3e514598e52f520b380ea7cf59"
       },
       {
-        "Size": 15360,
-        "DiffID": "sha256:e440547ad935d5d0dd2b4f4bbe17f0359b05604eb4a5958b198135e6675ec914"
+        "Size": 13824,
+        "DiffID": "sha256:5f931a373dbf131cb098d2b992d19310d505085d4778bcd7497bc60af580de62"
       },
       {
-        "Size": 15360,
-        "DiffID": "sha256:f5621dfb574fd116614b6a75081d58cc8cbe8a9a7899e85b4aa9091ab70f4f34"
+        "Size": 14336,
+        "DiffID": "sha256:c5eb6dfb3795dab01db65d779b362b19d55a080f820e25a14557c4d50b1632e7"
       },
       {
-        "Size": 7680,
-        "DiffID": "sha256:b2bde3e2f4bd7303ec67062899bd146d3b3cbf6bca8ed8cdd21cf3cd01914493"
-      },
-      {
-        "Size": 9606656,
-        "DiffID": "sha256:91493610d30a31f62d469a558e2c28938961e949e624d6b84cb78e16c4fbbb59"
+        "Size": 9609728,
+        "DiffID": "sha256:e95830ffb46f1627a87ff6470c8872618100dd33d1ba4df276c3e05ee04b7541"
       }
     ]
   },
   "Results": [
     {
-      "Target": "fairdatasystems/beaconfacade:2026-09-22 (alpine 3.23.4)",
+      "Target": "fairdatasystems/shallotfacade:2026-09-22 (alpine 3.23.4)",
       "Class": "os-pkgs",
       "Type": "alpine",
       "Packages": [
@@ -474,7 +463,7 @@
             "alpine-keys@2.6-r0"
           ],
           "Layer": {
-            "DiffID": "sha256:91493610d30a31f62d469a558e2c28938961e949e624d6b84cb78e16c4fbbb59"
+            "DiffID": "sha256:e95830ffb46f1627a87ff6470c8872618100dd33d1ba4df276c3e05ee04b7541"
           },
           "Digest": "sha1:9a222ee46b43276b7e607f66dab5faf915d13984",
           "InstalledFiles": [
@@ -509,7 +498,7 @@
             "zlib@1.3.2-r0"
           ],
           "Layer": {
-            "DiffID": "sha256:91493610d30a31f62d469a558e2c28938961e949e624d6b84cb78e16c4fbbb59"
+            "DiffID": "sha256:e95830ffb46f1627a87ff6470c8872618100dd33d1ba4df276c3e05ee04b7541"
           },
           "Digest": "sha1:fa7a8422abbbb5e179033cee5455124007817b22",
           "InstalledFiles": [
@@ -594,7 +583,7 @@
           ],
           "Maintainer": "Natanael Copa \u003cncopa@alpinelinux.org\u003e",
           "Layer": {
-            "DiffID": "sha256:91493610d30a31f62d469a558e2c28938961e949e624d6b84cb78e16c4fbbb59"
+            "DiffID": "sha256:e95830ffb46f1627a87ff6470c8872618100dd33d1ba4df276c3e05ee04b7541"
           },
           "Digest": "sha1:0b7f24b8a713bf4bb869de377505a5040239a7bc",
           "InstalledFiles": [
@@ -656,7 +645,7 @@
             "zlib@1.3.2-r0"
           ],
           "Layer": {
-            "DiffID": "sha256:91493610d30a31f62d469a558e2c28938961e949e624d6b84cb78e16c4fbbb59"
+            "DiffID": "sha256:e95830ffb46f1627a87ff6470c8872618100dd33d1ba4df276c3e05ee04b7541"
           },
           "Digest": "sha1:2913286d1d02641d392289ba525850be6856df11",
           "InstalledFiles": [
@@ -683,7 +672,7 @@
             "musl@1.2.5-r23"
           ],
           "Layer": {
-            "DiffID": "sha256:91493610d30a31f62d469a558e2c28938961e949e624d6b84cb78e16c4fbbb59"
+            "DiffID": "sha256:e95830ffb46f1627a87ff6470c8872618100dd33d1ba4df276c3e05ee04b7541"
           },
           "Digest": "sha1:c5d20a5036bd12c5130652879054be658429c1d5",
           "InstalledFiles": [
@@ -805,7 +794,7 @@
             "musl@1.2.5-r23"
           ],
           "Layer": {
-            "DiffID": "sha256:91493610d30a31f62d469a558e2c28938961e949e624d6b84cb78e16c4fbbb59"
+            "DiffID": "sha256:e95830ffb46f1627a87ff6470c8872618100dd33d1ba4df276c3e05ee04b7541"
           },
           "Digest": "sha1:07184887491e0feffa57184419b1387450047bb9",
           "InstalledFiles": [
@@ -1131,7 +1120,7 @@
             "BSD-2-Clause"
           ],
           "Layer": {
-            "DiffID": "sha256:438a2e5f60bbf8acdae5442383f92deaf592e2c433cea13812f4cd9bb1daf586"
+            "DiffID": "sha256:59d85fc22454af54cbe93a040d63a0a6db58bf3e514598e52f520b380ea7cf59"
           },
           "FilePath": "usr/local/bundle/specifications/base64-0.3.0.gemspec",
           "AnalyzedBy": "gemspec"
@@ -1197,7 +1186,7 @@
             "MIT"
           ],
           "Layer": {
-            "DiffID": "sha256:438a2e5f60bbf8acdae5442383f92deaf592e2c433cea13812f4cd9bb1daf586"
+            "DiffID": "sha256:59d85fc22454af54cbe93a040d63a0a6db58bf3e514598e52f520b380ea7cf59"
           },
           "FilePath": "usr/local/bundle/specifications/bundler-4.0.9.gemspec",
           "AnalyzedBy": "gemspec"
@@ -1251,23 +1240,6 @@
             "DiffID": "sha256:0f1f2c044176151c6fb5627b651bcc36a60e59edac7c7989901f20f72846f8ae"
           },
           "FilePath": "usr/local/lib/ruby/gems/3.2.0/specifications/default/date-3.3.3.gemspec",
-          "AnalyzedBy": "gemspec"
-        },
-        {
-          "Name": "date",
-          "Identifier": {
-            "PURL": "pkg:gem/date@3.5.1",
-            "UID": "143e71120c7f6b74"
-          },
-          "Version": "3.5.1",
-          "Licenses": [
-            "Ruby",
-            "BSD-2-Clause"
-          ],
-          "Layer": {
-            "DiffID": "sha256:438a2e5f60bbf8acdae5442383f92deaf592e2c433cea13812f4cd9bb1daf586"
-          },
-          "FilePath": "usr/local/bundle/specifications/date-3.5.1.gemspec",
           "AnalyzedBy": "gemspec"
         },
         {
@@ -1619,7 +1591,7 @@
             "Ruby"
           ],
           "Layer": {
-            "DiffID": "sha256:438a2e5f60bbf8acdae5442383f92deaf592e2c433cea13812f4cd9bb1daf586"
+            "DiffID": "sha256:59d85fc22454af54cbe93a040d63a0a6db58bf3e514598e52f520b380ea7cf59"
           },
           "FilePath": "usr/local/bundle/specifications/json-2.21.2.gemspec",
           "AnalyzedBy": "gemspec"
@@ -1669,7 +1641,7 @@
             "BSD-2-Clause"
           ],
           "Layer": {
-            "DiffID": "sha256:438a2e5f60bbf8acdae5442383f92deaf592e2c433cea13812f4cd9bb1daf586"
+            "DiffID": "sha256:59d85fc22454af54cbe93a040d63a0a6db58bf3e514598e52f520b380ea7cf59"
           },
           "FilePath": "usr/local/bundle/specifications/logger-1.7.0.gemspec",
           "AnalyzedBy": "gemspec"
@@ -1718,7 +1690,7 @@
             "MIT"
           ],
           "Layer": {
-            "DiffID": "sha256:438a2e5f60bbf8acdae5442383f92deaf592e2c433cea13812f4cd9bb1daf586"
+            "DiffID": "sha256:59d85fc22454af54cbe93a040d63a0a6db58bf3e514598e52f520b380ea7cf59"
           },
           "FilePath": "usr/local/bundle/specifications/mustermann-3.1.1.gemspec",
           "AnalyzedBy": "gemspec"
@@ -1777,18 +1749,18 @@
         {
           "Name": "net-imap",
           "Identifier": {
-            "PURL": "pkg:gem/net-imap@0.6.7",
-            "UID": "27bb2857f272300a"
+            "PURL": "pkg:gem/net-imap@0.3.9",
+            "UID": "9416209a7c7b3c38"
           },
-          "Version": "0.6.7",
+          "Version": "0.3.9",
           "Licenses": [
             "Ruby",
             "BSD-2-Clause"
           ],
           "Layer": {
-            "DiffID": "sha256:438a2e5f60bbf8acdae5442383f92deaf592e2c433cea13812f4cd9bb1daf586"
+            "DiffID": "sha256:0f1f2c044176151c6fb5627b651bcc36a60e59edac7c7989901f20f72846f8ae"
           },
-          "FilePath": "usr/local/bundle/specifications/net-imap-0.6.7.gemspec",
+          "FilePath": "usr/local/lib/ruby/gems/3.2.0/specifications/net-imap-0.3.9.gemspec",
           "AnalyzedBy": "gemspec"
         },
         {
@@ -1826,23 +1798,6 @@
           "AnalyzedBy": "gemspec"
         },
         {
-          "Name": "net-protocol",
-          "Identifier": {
-            "PURL": "pkg:gem/net-protocol@0.4.0",
-            "UID": "901b8969ac59958c"
-          },
-          "Version": "0.4.0",
-          "Licenses": [
-            "Ruby",
-            "BSD-2-Clause"
-          ],
-          "Layer": {
-            "DiffID": "sha256:438a2e5f60bbf8acdae5442383f92deaf592e2c433cea13812f4cd9bb1daf586"
-          },
-          "FilePath": "usr/local/bundle/specifications/net-protocol-0.4.0.gemspec",
-          "AnalyzedBy": "gemspec"
-        },
-        {
           "Name": "net-smtp",
           "Identifier": {
             "PURL": "pkg:gem/net-smtp@0.3.4",
@@ -1871,7 +1826,7 @@
             "BSD-2-Clause"
           ],
           "Layer": {
-            "DiffID": "sha256:438a2e5f60bbf8acdae5442383f92deaf592e2c433cea13812f4cd9bb1daf586"
+            "DiffID": "sha256:59d85fc22454af54cbe93a040d63a0a6db58bf3e514598e52f520b380ea7cf59"
           },
           "FilePath": "usr/local/bundle/specifications/nio4r-2.7.5.gemspec",
           "AnalyzedBy": "gemspec"
@@ -2115,17 +2070,17 @@
         {
           "Name": "puma",
           "Identifier": {
-            "PURL": "pkg:gem/puma@6.6.1",
-            "UID": "1dc14e633a8aad0a"
+            "PURL": "pkg:gem/puma@7.2.0",
+            "UID": "898b5d1aa475fc6f"
           },
-          "Version": "6.6.1",
+          "Version": "7.2.0",
           "Licenses": [
             "BSD-3-Clause"
           ],
           "Layer": {
-            "DiffID": "sha256:438a2e5f60bbf8acdae5442383f92deaf592e2c433cea13812f4cd9bb1daf586"
+            "DiffID": "sha256:59d85fc22454af54cbe93a040d63a0a6db58bf3e514598e52f520b380ea7cf59"
           },
-          "FilePath": "usr/local/bundle/specifications/puma-6.6.1.gemspec",
+          "FilePath": "usr/local/bundle/specifications/puma-7.2.0.gemspec",
           "AnalyzedBy": "gemspec"
         },
         {
@@ -2156,7 +2111,7 @@
             "MIT"
           ],
           "Layer": {
-            "DiffID": "sha256:438a2e5f60bbf8acdae5442383f92deaf592e2c433cea13812f4cd9bb1daf586"
+            "DiffID": "sha256:59d85fc22454af54cbe93a040d63a0a6db58bf3e514598e52f520b380ea7cf59"
           },
           "FilePath": "usr/local/bundle/specifications/rack-3.2.6.gemspec",
           "AnalyzedBy": "gemspec"
@@ -2172,7 +2127,7 @@
             "MIT"
           ],
           "Layer": {
-            "DiffID": "sha256:438a2e5f60bbf8acdae5442383f92deaf592e2c433cea13812f4cd9bb1daf586"
+            "DiffID": "sha256:59d85fc22454af54cbe93a040d63a0a6db58bf3e514598e52f520b380ea7cf59"
           },
           "FilePath": "usr/local/bundle/specifications/rack-protection-4.2.1.gemspec",
           "AnalyzedBy": "gemspec"
@@ -2188,7 +2143,7 @@
             "MIT"
           ],
           "Layer": {
-            "DiffID": "sha256:438a2e5f60bbf8acdae5442383f92deaf592e2c433cea13812f4cd9bb1daf586"
+            "DiffID": "sha256:59d85fc22454af54cbe93a040d63a0a6db58bf3e514598e52f520b380ea7cf59"
           },
           "FilePath": "usr/local/bundle/specifications/rack-session-2.1.2.gemspec",
           "AnalyzedBy": "gemspec"
@@ -2204,7 +2159,7 @@
             "MIT"
           ],
           "Layer": {
-            "DiffID": "sha256:438a2e5f60bbf8acdae5442383f92deaf592e2c433cea13812f4cd9bb1daf586"
+            "DiffID": "sha256:59d85fc22454af54cbe93a040d63a0a6db58bf3e514598e52f520b380ea7cf59"
           },
           "FilePath": "usr/local/bundle/specifications/rackup-2.3.1.gemspec",
           "AnalyzedBy": "gemspec"
@@ -2469,7 +2424,7 @@
             "MIT"
           ],
           "Layer": {
-            "DiffID": "sha256:438a2e5f60bbf8acdae5442383f92deaf592e2c433cea13812f4cd9bb1daf586"
+            "DiffID": "sha256:59d85fc22454af54cbe93a040d63a0a6db58bf3e514598e52f520b380ea7cf59"
           },
           "FilePath": "usr/local/bundle/specifications/sinatra-4.2.1.gemspec",
           "AnalyzedBy": "gemspec"
@@ -2604,7 +2559,7 @@
             "MIT"
           ],
           "Layer": {
-            "DiffID": "sha256:438a2e5f60bbf8acdae5442383f92deaf592e2c433cea13812f4cd9bb1daf586"
+            "DiffID": "sha256:59d85fc22454af54cbe93a040d63a0a6db58bf3e514598e52f520b380ea7cf59"
           },
           "FilePath": "usr/local/bundle/specifications/tilt-2.8.0.gemspec",
           "AnalyzedBy": "gemspec"
@@ -2641,23 +2596,6 @@
             "DiffID": "sha256:0f1f2c044176151c6fb5627b651bcc36a60e59edac7c7989901f20f72846f8ae"
           },
           "FilePath": "usr/local/lib/ruby/gems/3.2.0/specifications/default/timeout-0.3.1.gemspec",
-          "AnalyzedBy": "gemspec"
-        },
-        {
-          "Name": "timeout",
-          "Identifier": {
-            "PURL": "pkg:gem/timeout@0.6.1",
-            "UID": "5f0353b58d2d93de"
-          },
-          "Version": "0.6.1",
-          "Licenses": [
-            "Ruby",
-            "BSD-2-Clause"
-          ],
-          "Layer": {
-            "DiffID": "sha256:438a2e5f60bbf8acdae5442383f92deaf592e2c433cea13812f4cd9bb1daf586"
-          },
-          "FilePath": "usr/local/bundle/specifications/timeout-0.6.1.gemspec",
           "AnalyzedBy": "gemspec"
         },
         {
@@ -2818,7 +2756,7 @@
             "Name": "Ruby Advisory Database",
             "URL": "https://github.com/rubysec/ruby-advisory-db"
           },
-          "Fingerprint": "sha256:66570443de71575269e0483f59f63c79d2229d0f376b262be67306b2a2167cce",
+          "Fingerprint": "sha256:090deeba71aa390257980e744117c51bb2b73e6e8857b5457b8d25ba8c9b04c0",
           "Title": "erb: ERB: Arbitrary code execution via deserialization bypass",
           "Description": "ERB is a templating system for Ruby. Ruby 2.7.0 (before ERB 2.2.0 was published on rubygems.org) introduced an `@_init` instance variable guard in `ERB#result` and `ERB#run` to prevent code execution when an ERB object is reconstructed via `Marshal.load` (deserialization). However, three other public methods that also evaluate `@src` via `eval()` were not given the same guard: `ERB#def_method`, `ERB#def_module`, and `ERB#def_class`. An attacker who can trigger `Marshal.load` on untrusted data in a Ruby application that has `erb` loaded can use `ERB#def_module` (zero-arg, default parameters) as a code execution sink, bypassing the `@_init` protection entirely. ERB 4.0.3.1, 4.0.4.1, 6.0.1.1, and 6.0.4 patch the issue.",
           "Severity": "HIGH",
@@ -2891,18 +2829,426 @@
           "LastModifiedDate": "2026-08-24T13:18:33.597Z"
         },
         {
+          "VulnerabilityID": "CVE-2026-42257",
+          "PkgName": "net-imap",
+          "PkgPath": "usr/local/lib/ruby/gems/3.2.0/specifications/net-imap-0.3.9.gemspec",
+          "PkgIdentifier": {
+            "PURL": "pkg:gem/net-imap@0.3.9",
+            "UID": "9416209a7c7b3c38"
+          },
+          "InstalledVersion": "0.3.9",
+          "FixedVersion": "~\u003e 0.4.24, ~\u003e 0.5.14, \u003e= 0.6.4",
+          "Status": "fixed",
+          "Layer": {
+            "DiffID": "sha256:0f1f2c044176151c6fb5627b651bcc36a60e59edac7c7989901f20f72846f8ae"
+          },
+          "SeveritySource": "nvd",
+          "PrimaryURL": "https://avd.aquasec.com/nvd/cve-2026-42257",
+          "DataSource": {
+            "ID": "ruby-advisory-db",
+            "Name": "Ruby Advisory Database",
+            "URL": "https://github.com/rubysec/ruby-advisory-db"
+          },
+          "Fingerprint": "sha256:3b1e72e7852de9f36dcf1b4117919cb2def1a8add17518631e32cad23969ab61",
+          "Title": "net-imap: Net::IMAP: Arbitrary IMAP command injection via CRLF sequences in unvalidated input",
+          "Description": "Net::IMAP implements Internet Message Access Protocol (IMAP) client functionality in Ruby. Prior to versions 0.4.24, 0.5.14, and 0.6.4, several Net::IMAP commands accept a raw string argument that is sent to the server without validation or escaping. If this string is derived from user-controlled input, it may contain contain CRLF sequences, which an attacker can use to inject arbitrary IMAP commands. This issue has been patched in versions 0.4.24, 0.5.14, and 0.6.4.",
+          "Severity": "CRITICAL",
+          "CweIDs": [
+            "CWE-77",
+            "CWE-93"
+          ],
+          "VendorSeverity": {
+            "alma": 3,
+            "amazon": 3,
+            "ghsa": 2,
+            "nvd": 4,
+            "oracle-oval": 3,
+            "redhat": 2,
+            "rocky": 3,
+            "ubuntu": 2
+          },
+          "CVSS": {
+            "ghsa": {
+              "V40Vector": "CVSS:4.0/AV:L/AC:L/AT:P/PR:N/UI:P/VC:N/VI:H/VA:L/SC:N/SI:N/SA:N",
+              "V40Score": 5.8
+            },
+            "nvd": {
+              "V3Vector": "CVSS:3.1/AV:N/AC:L/PR:N/UI:N/S:U/C:H/I:H/A:H",
+              "V3Score": 9.8
+            },
+            "redhat": {
+              "V3Vector": "CVSS:3.1/AV:L/AC:L/PR:N/UI:R/S:U/C:N/I:H/A:L",
+              "V3Score": 6.1
+            }
+          },
+          "References": [
+            "https://access.redhat.com/errata/RHSA-2026:50828",
+            "https://access.redhat.com/security/cve/CVE-2026-42257",
+            "https://bugzilla.redhat.com/2459002",
+            "https://bugzilla.redhat.com/2468494",
+            "https://bugzilla.redhat.com/2468500",
+            "https://bugzilla.redhat.com/2491519",
+            "https://bugzilla.redhat.com/2491523",
+            "https://bugzilla.redhat.com/show_bug.cgi?id=2459002",
+            "https://bugzilla.redhat.com/show_bug.cgi?id=2468494",
+            "https://bugzilla.redhat.com/show_bug.cgi?id=2468500",
+            "https://bugzilla.redhat.com/show_bug.cgi?id=2491519",
+            "https://bugzilla.redhat.com/show_bug.cgi?id=2491522",
+            "https://bugzilla.redhat.com/show_bug.cgi?id=2491523",
+            "https://creativecommons.org/licenses/by/4.0/",
+            "https://cve.mitre.org/cgi-bin/cvename.cgi?name=CVE-2026-27820",
+            "https://cve.mitre.org/cgi-bin/cvename.cgi?name=CVE-2026-42256",
+            "https://cve.mitre.org/cgi-bin/cvename.cgi?name=CVE-2026-42257",
+            "https://cve.mitre.org/cgi-bin/cvename.cgi?name=CVE-2026-47240",
+            "https://cve.mitre.org/cgi-bin/cvename.cgi?name=CVE-2026-47241",
+            "https://cve.mitre.org/cgi-bin/cvename.cgi?name=CVE-2026-47242",
+            "https://errata.almalinux.org/9/ALSA-2026-50828.html",
+            "https://errata.rockylinux.org/RLSA-2026:50828",
+            "https://github.com/advisories/GHSA-hm49-wcqc-g2xg",
+            "https://github.com/ruby/net-imap",
+            "https://github.com/ruby/net-imap/commit/0ec4fd351263e8b9a4f683713427827b7b1ad974",
+            "https://github.com/ruby/net-imap/commit/47c72186d272441878ca73c9499f66013829ca2f",
+            "https://github.com/ruby/net-imap/commit/6bf02aef7e0b5931010c36e377f79a71636b306b",
+            "https://github.com/ruby/net-imap/commit/a4f7649c3da77dec7631f03a037a478eb4330048",
+            "https://github.com/ruby/net-imap/commit/aec06996eb87a7e1bbcef1f9f8926e8add2b8c71",
+            "https://github.com/ruby/net-imap/releases/tag/v0.4.24",
+            "https://github.com/ruby/net-imap/releases/tag/v0.5.14",
+            "https://github.com/ruby/net-imap/releases/tag/v0.6.4",
+            "https://github.com/ruby/net-imap/security/advisories/GHSA-hm49-wcqc-g2xg",
+            "https://github.com/rubysec/ruby-advisory-db/blob/master/gems/net-imap/CVE-2026-42257.yml",
+            "https://linux.oracle.com/cve/CVE-2026-42257.html",
+            "https://linux.oracle.com/errata/ELSA-2026-50828.html",
+            "https://nvd.nist.gov/vuln/detail/CVE-2026-42257",
+            "https://ubuntu.com/security/notices/USN-8431-1",
+            "https://ubuntu.com/security/notices/USN-8478-1",
+            "https://www.cve.org/CVERecord?id=CVE-2026-42257"
+          ],
+          "PublishedDate": "2026-05-09T20:16:28.463Z",
+          "LastModifiedDate": "2026-07-24T21:10:00.143Z"
+        },
+        {
+          "VulnerabilityID": "CVE-2026-42245",
+          "PkgName": "net-imap",
+          "PkgPath": "usr/local/lib/ruby/gems/3.2.0/specifications/net-imap-0.3.9.gemspec",
+          "PkgIdentifier": {
+            "PURL": "pkg:gem/net-imap@0.3.9",
+            "UID": "9416209a7c7b3c38"
+          },
+          "InstalledVersion": "0.3.9",
+          "FixedVersion": "~\u003e 0.4.24, ~\u003e 0.5.14, \u003e= 0.6.4",
+          "Status": "fixed",
+          "Layer": {
+            "DiffID": "sha256:0f1f2c044176151c6fb5627b651bcc36a60e59edac7c7989901f20f72846f8ae"
+          },
+          "SeveritySource": "nvd",
+          "PrimaryURL": "https://avd.aquasec.com/nvd/cve-2026-42245",
+          "DataSource": {
+            "ID": "ruby-advisory-db",
+            "Name": "Ruby Advisory Database",
+            "URL": "https://github.com/rubysec/ruby-advisory-db"
+          },
+          "Fingerprint": "sha256:9abf3eb53fd78418c0f7178fd3e22bddeca34edb9dad96df3cf12fabd1f668d9",
+          "Title": "ruby: net-imap: Net::IMAP: Denial of Service via crafted IMAP responses",
+          "Description": "Net::IMAP implements Internet Message Access Protocol (IMAP) client functionality in Ruby. Prior to versions 0.4.24, 0.5.14, and 0.6.4, Net::IMAP::ResponseReader has quadratic time complexity when reading large responses containing many string literals. A hostile server can send responses which are crafted to exhaust the client's CPU for a denial of service attack. This issue has been patched in versions 0.4.24, 0.5.14, and 0.6.4.",
+          "Severity": "HIGH",
+          "CweIDs": [
+            "CWE-407"
+          ],
+          "VendorSeverity": {
+            "alma": 3,
+            "amazon": 3,
+            "ghsa": 1,
+            "nvd": 3,
+            "oracle-oval": 3,
+            "redhat": 2,
+            "rocky": 3
+          },
+          "CVSS": {
+            "ghsa": {
+              "V40Vector": "CVSS:4.0/AV:N/AC:L/AT:P/PR:N/UI:P/VC:N/VI:N/VA:L/SC:N/SI:N/SA:N",
+              "V40Score": 2.3
+            },
+            "nvd": {
+              "V3Vector": "CVSS:3.1/AV:N/AC:L/PR:N/UI:N/S:U/C:N/I:N/A:H",
+              "V3Score": 7.5
+            },
+            "redhat": {
+              "V3Vector": "CVSS:3.1/AV:N/AC:L/PR:N/UI:R/S:U/C:N/I:N/A:H",
+              "V3Score": 6.5
+            }
+          },
+          "References": [
+            "https://access.redhat.com/errata/RHSA-2026:33577",
+            "https://access.redhat.com/security/cve/CVE-2026-42245",
+            "https://bugzilla.redhat.com/2468495",
+            "https://bugzilla.redhat.com/2468498",
+            "https://bugzilla.redhat.com/2468499",
+            "https://bugzilla.redhat.com/show_bug.cgi?id=2468495",
+            "https://bugzilla.redhat.com/show_bug.cgi?id=2468498",
+            "https://bugzilla.redhat.com/show_bug.cgi?id=2468499",
+            "https://creativecommons.org/licenses/by/4.0/",
+            "https://cve.mitre.org/cgi-bin/cvename.cgi?name=CVE-2026-42245",
+            "https://cve.mitre.org/cgi-bin/cvename.cgi?name=CVE-2026-42246",
+            "https://cve.mitre.org/cgi-bin/cvename.cgi?name=CVE-2026-42258",
+            "https://errata.almalinux.org/9/ALSA-2026-33577.html",
+            "https://errata.rockylinux.org/RLSA-2026:33577",
+            "https://github.com/advisories/GHSA-q2mw-fvj9-vvcw",
+            "https://github.com/ruby/net-imap",
+            "https://github.com/ruby/net-imap/commit/6091f7d6b1f3514cafbfe39c76f2b5d73de3ca96",
+            "https://github.com/ruby/net-imap/commit/88d95231fc8afef11c1f074453f7d75b68c9dfda",
+            "https://github.com/ruby/net-imap/commit/de685f91a4a4cc75eb80da898c2bf8af08d34819",
+            "https://github.com/ruby/net-imap/releases/tag/v0.4.24",
+            "https://github.com/ruby/net-imap/releases/tag/v0.5.14",
+            "https://github.com/ruby/net-imap/releases/tag/v0.6.4",
+            "https://github.com/ruby/net-imap/security/advisories/GHSA-q2mw-fvj9-vvcw",
+            "https://github.com/rubysec/ruby-advisory-db/blob/master/gems/net-imap/CVE-2026-42245.yml",
+            "https://linux.oracle.com/cve/CVE-2026-42245.html",
+            "https://linux.oracle.com/errata/ELSA-2026-33577.html",
+            "https://nvd.nist.gov/vuln/detail/CVE-2026-42245",
+            "https://www.cve.org/CVERecord?id=CVE-2026-42245"
+          ],
+          "PublishedDate": "2026-05-09T20:16:28.017Z",
+          "LastModifiedDate": "2026-07-24T19:10:00.16Z"
+        },
+        {
+          "VulnerabilityID": "CVE-2026-42246",
+          "PkgName": "net-imap",
+          "PkgPath": "usr/local/lib/ruby/gems/3.2.0/specifications/net-imap-0.3.9.gemspec",
+          "PkgIdentifier": {
+            "PURL": "pkg:gem/net-imap@0.3.9",
+            "UID": "9416209a7c7b3c38"
+          },
+          "InstalledVersion": "0.3.9",
+          "FixedVersion": "~\u003e 0.3.10, ~\u003e 0.4.24, ~\u003e 0.5.14, \u003e= 0.6.4",
+          "Status": "fixed",
+          "Layer": {
+            "DiffID": "sha256:0f1f2c044176151c6fb5627b651bcc36a60e59edac7c7989901f20f72846f8ae"
+          },
+          "SeveritySource": "nvd",
+          "PrimaryURL": "https://avd.aquasec.com/nvd/cve-2026-42246",
+          "DataSource": {
+            "ID": "ruby-advisory-db",
+            "Name": "Ruby Advisory Database",
+            "URL": "https://github.com/rubysec/ruby-advisory-db"
+          },
+          "Fingerprint": "sha256:279705745bbf2ef793a4cebd598090f30765e236c8b40ae9349ca524cf3b7782",
+          "Title": "net-imap: ruby: Net::IMAP: Information disclosure via man-in-the-middle attack bypassing TLS",
+          "Description": "Net::IMAP implements Internet Message Access Protocol (IMAP) client functionality in Ruby. Prior to versions 0.3.10, 0.4.24, 0.5.14, and 0.6.4, a man-in-the-middle attacker can cause Net::IMAP#starttls to return \"successfully\", without starting TLS. This issue has been patched in versions 0.3.10, 0.4.24, 0.5.14, and 0.6.4.",
+          "Severity": "HIGH",
+          "CweIDs": [
+            "CWE-392",
+            "CWE-393",
+            "CWE-636",
+            "CWE-754",
+            "CWE-841",
+            "CWE-325"
+          ],
+          "VendorSeverity": {
+            "alma": 3,
+            "amazon": 3,
+            "ghsa": 3,
+            "nvd": 3,
+            "oracle-oval": 3,
+            "redhat": 3,
+            "rocky": 3,
+            "ubuntu": 2
+          },
+          "CVSS": {
+            "ghsa": {
+              "V40Vector": "CVSS:4.0/AV:N/AC:L/AT:P/PR:N/UI:P/VC:H/VI:H/VA:N/SC:N/SI:N/SA:N",
+              "V40Score": 7.6
+            },
+            "nvd": {
+              "V3Vector": "CVSS:3.1/AV:N/AC:H/PR:N/UI:N/S:U/C:H/I:H/A:N",
+              "V3Score": 7.4
+            },
+            "redhat": {
+              "V3Vector": "CVSS:3.1/AV:N/AC:H/PR:N/UI:N/S:U/C:H/I:H/A:N",
+              "V3Score": 7.4
+            }
+          },
+          "References": [
+            "https://access.redhat.com/errata/RHSA-2026:33462",
+            "https://access.redhat.com/errata/RHSA-2026:33512",
+            "https://access.redhat.com/errata/RHSA-2026:33514",
+            "https://access.redhat.com/errata/RHSA-2026:33515",
+            "https://access.redhat.com/errata/RHSA-2026:33540",
+            "https://access.redhat.com/errata/RHSA-2026:33551",
+            "https://access.redhat.com/errata/RHSA-2026:33552",
+            "https://access.redhat.com/errata/RHSA-2026:33565",
+            "https://access.redhat.com/errata/RHSA-2026:33576",
+            "https://access.redhat.com/errata/RHSA-2026:33577",
+            "https://access.redhat.com/errata/RHSA-2026:33630",
+            "https://access.redhat.com/errata/RHSA-2026:33721",
+            "https://access.redhat.com/errata/RHSA-2026:34076",
+            "https://access.redhat.com/errata/RHSA-2026:35834",
+            "https://access.redhat.com/errata/RHSA-2026:35866",
+            "https://access.redhat.com/errata/RHSA-2026:35867",
+            "https://access.redhat.com/errata/RHSA-2026:35895",
+            "https://access.redhat.com/errata/RHSA-2026:36099",
+            "https://access.redhat.com/errata/RHSA-2026:37238",
+            "https://access.redhat.com/errata/RHSA-2026:37397",
+            "https://access.redhat.com/security/cve/CVE-2026-42246",
+            "https://bugzilla.redhat.com/2468495",
+            "https://bugzilla.redhat.com/2468498",
+            "https://bugzilla.redhat.com/2468499",
+            "https://bugzilla.redhat.com/show_bug.cgi?id=2468495",
+            "https://bugzilla.redhat.com/show_bug.cgi?id=2468498",
+            "https://bugzilla.redhat.com/show_bug.cgi?id=2468499",
+            "https://creativecommons.org/licenses/by/4.0/",
+            "https://cve.mitre.org/cgi-bin/cvename.cgi?name=CVE-2026-42245",
+            "https://cve.mitre.org/cgi-bin/cvename.cgi?name=CVE-2026-42246",
+            "https://cve.mitre.org/cgi-bin/cvename.cgi?name=CVE-2026-42258",
+            "https://errata.almalinux.org/9/ALSA-2026-33577.html",
+            "https://errata.rockylinux.org/RLSA-2026:33577",
+            "https://github.com/advisories/GHSA-vcgp-9326-pqcp",
+            "https://github.com/ruby/net-imap",
+            "https://github.com/ruby/net-imap/commit/0ede4c40b1523dfeaf95777b2678e54cc0fd9618",
+            "https://github.com/ruby/net-imap/commit/24a4e770b43230286a05aa2a9746cdbb3eb8485e",
+            "https://github.com/ruby/net-imap/commit/97e2488fb5401a1783bddd959dde007d9fbce42c",
+            "https://github.com/ruby/net-imap/commit/f79d35bf5833f186e81044c57c843eda30c873da",
+            "https://github.com/ruby/net-imap/releases/tag/v0.3.10",
+            "https://github.com/ruby/net-imap/releases/tag/v0.4.24",
+            "https://github.com/ruby/net-imap/releases/tag/v0.5.14",
+            "https://github.com/ruby/net-imap/releases/tag/v0.6.4",
+            "https://github.com/ruby/net-imap/security/advisories/GHSA-vcgp-9326-pqcp",
+            "https://github.com/rubysec/ruby-advisory-db/blob/master/gems/net-imap/CVE-2026-42246.yml",
+            "https://linux.oracle.com/cve/CVE-2026-42246.html",
+            "https://linux.oracle.com/errata/ELSA-2026-37397.html",
+            "https://nostarttls.secvuln.info",
+            "https://nvd.nist.gov/vuln/detail/CVE-2026-42246",
+            "https://security.access.redhat.com/data/csaf/v2/vex/2026/cve-2026-42246.json",
+            "https://ubuntu.com/security/notices/USN-8431-1",
+            "https://ubuntu.com/security/notices/USN-8478-1",
+            "https://www.cve.org/CVERecord?id=CVE-2026-42246",
+            "https://www.rfc-editor.org/info/rfc8314"
+          ],
+          "PublishedDate": "2026-05-09T20:16:28.163Z",
+          "LastModifiedDate": "2026-08-24T13:18:41.42Z"
+        },
+        {
+          "VulnerabilityID": "CVE-2026-42258",
+          "PkgName": "net-imap",
+          "PkgPath": "usr/local/lib/ruby/gems/3.2.0/specifications/net-imap-0.3.9.gemspec",
+          "PkgIdentifier": {
+            "PURL": "pkg:gem/net-imap@0.3.9",
+            "UID": "9416209a7c7b3c38"
+          },
+          "InstalledVersion": "0.3.9",
+          "FixedVersion": "~\u003e 0.4.24, ~\u003e 0.5.14, \u003e= 0.6.4",
+          "Status": "fixed",
+          "Layer": {
+            "DiffID": "sha256:0f1f2c044176151c6fb5627b651bcc36a60e59edac7c7989901f20f72846f8ae"
+          },
+          "SeveritySource": "ruby-advisory-db",
+          "PrimaryURL": "https://avd.aquasec.com/nvd/cve-2026-42258",
+          "DataSource": {
+            "ID": "ruby-advisory-db",
+            "Name": "Ruby Advisory Database",
+            "URL": "https://github.com/rubysec/ruby-advisory-db"
+          },
+          "Fingerprint": "sha256:96b28c51372c4af648b1d4ed8d6701fc318e0cf2fec55dde87f7231b176cf633",
+          "Title": "ruby/net-imap: ruby: Net::IMAP: IMAP Command Injection via Symbol Arguments",
+          "Description": "Net::IMAP implements Internet Message Access Protocol (IMAP) client functionality in Ruby. Prior to versions 0.4.24, 0.5.14, and 0.6.4, symbol arguments to commands are vulnerable to a CRLF Injection / IMAP Command injection via Symbol arguments passed to IMAP commands. This issue has been patched in versions 0.4.24, 0.5.14, and 0.6.4.",
+          "Severity": "HIGH",
+          "CweIDs": [
+            "CWE-77",
+            "CWE-93"
+          ],
+          "VendorSeverity": {
+            "alma": 3,
+            "amazon": 3,
+            "ghsa": 2,
+            "nvd": 2,
+            "oracle-oval": 3,
+            "redhat": 3,
+            "rocky": 3,
+            "ruby-advisory-db": 3
+          },
+          "CVSS": {
+            "ghsa": {
+              "V3Vector": "CVSS:3.1/AV:L/AC:H/PR:L/UI:N/S:U/C:N/I:H/A:L",
+              "V40Vector": "CVSS:4.0/AV:L/AC:H/AT:P/PR:N/UI:P/VC:N/VI:H/VA:L/SC:N/SI:N/SA:N",
+              "V3Score": 5.3,
+              "V40Score": 5.8
+            },
+            "nvd": {
+              "V3Vector": "CVSS:3.1/AV:L/AC:H/PR:L/UI:N/S:U/C:N/I:H/A:L",
+              "V3Score": 5.3
+            },
+            "redhat": {
+              "V3Vector": "CVSS:3.1/AV:N/AC:L/PR:N/UI:R/S:U/C:L/I:H/A:N",
+              "V3Score": 7.1
+            }
+          },
+          "References": [
+            "https://access.redhat.com/errata/RHSA-2026:33462",
+            "https://access.redhat.com/errata/RHSA-2026:33512",
+            "https://access.redhat.com/errata/RHSA-2026:33514",
+            "https://access.redhat.com/errata/RHSA-2026:33515",
+            "https://access.redhat.com/errata/RHSA-2026:33540",
+            "https://access.redhat.com/errata/RHSA-2026:33565",
+            "https://access.redhat.com/errata/RHSA-2026:33576",
+            "https://access.redhat.com/errata/RHSA-2026:33577",
+            "https://access.redhat.com/errata/RHSA-2026:33630",
+            "https://access.redhat.com/errata/RHSA-2026:33721",
+            "https://access.redhat.com/errata/RHSA-2026:34076",
+            "https://access.redhat.com/errata/RHSA-2026:35447",
+            "https://access.redhat.com/errata/RHSA-2026:35834",
+            "https://access.redhat.com/errata/RHSA-2026:35866",
+            "https://access.redhat.com/errata/RHSA-2026:35867",
+            "https://access.redhat.com/errata/RHSA-2026:35895",
+            "https://access.redhat.com/errata/RHSA-2026:36099",
+            "https://access.redhat.com/errata/RHSA-2026:36978",
+            "https://access.redhat.com/errata/RHSA-2026:37238",
+            "https://access.redhat.com/errata/RHSA-2026:37397",
+            "https://access.redhat.com/errata/RHSA-2026:38694",
+            "https://access.redhat.com/errata/RHSA-2026:40380",
+            "https://access.redhat.com/security/cve/CVE-2026-42258",
+            "https://bugzilla.redhat.com/2468495",
+            "https://bugzilla.redhat.com/2468498",
+            "https://bugzilla.redhat.com/2468499",
+            "https://bugzilla.redhat.com/show_bug.cgi?id=2468495",
+            "https://bugzilla.redhat.com/show_bug.cgi?id=2468498",
+            "https://bugzilla.redhat.com/show_bug.cgi?id=2468499",
+            "https://creativecommons.org/licenses/by/4.0/",
+            "https://cve.mitre.org/cgi-bin/cvename.cgi?name=CVE-2026-42245",
+            "https://cve.mitre.org/cgi-bin/cvename.cgi?name=CVE-2026-42246",
+            "https://cve.mitre.org/cgi-bin/cvename.cgi?name=CVE-2026-42258",
+            "https://errata.almalinux.org/9/ALSA-2026-33577.html",
+            "https://errata.rockylinux.org/RLSA-2026:33577",
+            "https://github.com/advisories/GHSA-75xq-5h9v-w6px",
+            "https://github.com/ruby/net-imap",
+            "https://github.com/ruby/net-imap/commit/6bf02aef7e0b5931010c36e377f79a71636b306b",
+            "https://github.com/ruby/net-imap/commit/9db3e9d60bfb8f3735ea95015bf8a700f4af9cbb",
+            "https://github.com/ruby/net-imap/commit/aec06996eb87a7e1bbcef1f9f8926e8add2b8c71",
+            "https://github.com/ruby/net-imap/releases/tag/v0.4.24",
+            "https://github.com/ruby/net-imap/releases/tag/v0.5.14",
+            "https://github.com/ruby/net-imap/releases/tag/v0.6.4",
+            "https://github.com/ruby/net-imap/security/advisories/GHSA-75xq-5h9v-w6px",
+            "https://github.com/rubysec/ruby-advisory-db/blob/master/gems/net-imap/CVE-2026-42258.yml",
+            "https://linux.oracle.com/cve/CVE-2026-42258.html",
+            "https://linux.oracle.com/errata/ELSA-2026-37397.html",
+            "https://nvd.nist.gov/vuln/detail/CVE-2026-42258",
+            "https://security.access.redhat.com/data/csaf/v2/vex/2026/cve-2026-42258.json",
+            "https://www.cve.org/CVERecord?id=CVE-2026-42258"
+          ],
+          "PublishedDate": "2026-05-09T20:16:28.623Z",
+          "LastModifiedDate": "2026-08-24T13:18:41.83Z"
+        },
+        {
           "VulnerabilityID": "CVE-2026-47736",
           "PkgName": "puma",
-          "PkgPath": "usr/local/bundle/specifications/puma-6.6.1.gemspec",
+          "PkgPath": "usr/local/bundle/specifications/puma-7.2.0.gemspec",
           "PkgIdentifier": {
-            "PURL": "pkg:gem/puma@6.6.1",
-            "UID": "1dc14e633a8aad0a"
+            "PURL": "pkg:gem/puma@7.2.0",
+            "UID": "898b5d1aa475fc6f"
           },
-          "InstalledVersion": "6.6.1",
+          "InstalledVersion": "7.2.0",
           "FixedVersion": "~\u003e 7.2.1, \u003e= 8.0.2",
           "Status": "fixed",
           "Layer": {
-            "DiffID": "sha256:438a2e5f60bbf8acdae5442383f92deaf592e2c433cea13812f4cd9bb1daf586"
+            "DiffID": "sha256:59d85fc22454af54cbe93a040d63a0a6db58bf3e514598e52f520b380ea7cf59"
           },
           "SeveritySource": "ruby-advisory-db",
           "PrimaryURL": "https://avd.aquasec.com/nvd/cve-2026-47736",
@@ -2911,7 +3257,7 @@
             "Name": "Ruby Advisory Database",
             "URL": "https://github.com/rubysec/ruby-advisory-db"
           },
-          "Fingerprint": "sha256:2624beb8319e05f662b14c67aced72d32060415c13736c0eeccc66ace3e0c7d9",
+          "Fingerprint": "sha256:7dd0cd42d57bf78c8ebf3aaced3796be5bf5c4c199f5ec958fd0ca74fea2b588",
           "Title": "puma: Puma: Denial of Service due to unbounded memory growth in PROXY protocol v1",
           "Description": "Puma is a Ruby/Rack web server built for parallelism. From 5.5.0 until 7.2.1 and 8.0.2, when PROXY protocol v1 support is enabled, Puma reads incoming bytes into an internal buffer while waiting for CRLF to determine whether a PROXY v1 line is present, allowing an attacker that continuously sends bytes without CRLF to cause unbounded in-process memory growth and additional CPU cost from repeatedly scanning the growing buffer. This issue is fixed in versions 7.2.1 and 8.0.2.",
           "Severity": "HIGH",
@@ -2958,16 +3304,16 @@
         {
           "VulnerabilityID": "CVE-2026-47737",
           "PkgName": "puma",
-          "PkgPath": "usr/local/bundle/specifications/puma-6.6.1.gemspec",
+          "PkgPath": "usr/local/bundle/specifications/puma-7.2.0.gemspec",
           "PkgIdentifier": {
-            "PURL": "pkg:gem/puma@6.6.1",
-            "UID": "1dc14e633a8aad0a"
+            "PURL": "pkg:gem/puma@7.2.0",
+            "UID": "898b5d1aa475fc6f"
           },
-          "InstalledVersion": "6.6.1",
+          "InstalledVersion": "7.2.0",
           "FixedVersion": "~\u003e 7.2.1, \u003e= 8.0.2",
           "Status": "fixed",
           "Layer": {
-            "DiffID": "sha256:438a2e5f60bbf8acdae5442383f92deaf592e2c433cea13812f4cd9bb1daf586"
+            "DiffID": "sha256:59d85fc22454af54cbe93a040d63a0a6db58bf3e514598e52f520b380ea7cf59"
           },
           "SeveritySource": "ruby-advisory-db",
           "PrimaryURL": "https://avd.aquasec.com/nvd/cve-2026-47737",
@@ -2976,7 +3322,7 @@
             "Name": "Ruby Advisory Database",
             "URL": "https://github.com/rubysec/ruby-advisory-db"
           },
-          "Fingerprint": "sha256:031df8336abc7c61daf6ae62a34c003146a4a5611d3f5ff7cc4a12346fa51fd6",
+          "Fingerprint": "sha256:3bd7862b98b038d1bd1d6c233fd9a428a74151589db54470d31b6d29bb9342ae",
           "Title": "puma: Puma: Source IP spoofing via PROXY protocol header re-parsing",
           "Description": "Puma is a Ruby/Rack web server built for parallelism. From 5.5.0 until 7.2.1 and 8.0.2, Puma is vulnerable to source IP spoofing when set_remote_address proxy_protocol: :v1 is enabled and persistent connections are used because Puma incorrectly re-parses PROXY protocol headers after each keep-alive request on the same connection, allowing an attacker to inject a second PROXY header and overwrite REMOTE_ADDR. This issue is fixed in versions 7.2.1 and 8.0.2.",
           "Severity": "HIGH",
@@ -3045,7 +3391,7 @@
             "Name": "Ruby Advisory Database",
             "URL": "https://github.com/rubysec/ruby-advisory-db"
           },
-          "Fingerprint": "sha256:da2e86ecf9b304f852d9ad6efc2737f19a81a9f213630174e5b9b2d0603f2865",
+          "Fingerprint": "sha256:06b808dc6f2f1d228ef467ff187071e7cd86e64e72a47ef7748d287ec5e63871",
           "Title": "resolv: resolv gem: Denial of Service via uncontrolled memory growth from crafted DNS responses",
           "Description": "An issue was discovered in the resolv gem before 0.7.2 for Ruby. Resolv::DNS::Resource.get_class, Resolv::DNS::Resource::Generic.create, and Resolv::DNS::SvcParam::Generic.create generate a new class for each unknown DNS resource record (type, class) pair, or each unknown SvcParamKey, encountered while decoding a response. Each generated class was permanently registered both as a constant on Resource (or SvcParam::Generic) and as an entry in a class-lookup hash (ClassHash), and thus the class remained reachable through that constant after the response was discarded. Type and class are each 16-bit values, and thus an attacker controlling DNS responses (a spoofed response, or a malicious or hijacked upstream DNS server) has roughly 2^32 distinct (type, class) pairs to choose from. A single response of a few hundred kilobytes carrying tens of thousands of distinct unknown types permanently grows process memory by tens of megabytes; repeated responses accumulate without bound and are never reclaimed by garbage collection, because the constant keeps each class alive. Any code path that calls Resolv::DNS::Message.decode on attacker-influenced DNS responses is affected. resolv is a default gem, and thus this is reachable from a plain Ruby installation without any additional dependency.",
           "Severity": "HIGH",
