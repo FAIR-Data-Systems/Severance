@@ -4,6 +4,8 @@ All notable changes to this project are documented here. Format loosely follows 
 
 ## [Unreleased]
 
+## [1.1.0] - 2026-09-22
+
 ### Changed
 
 - `facades/shallot-facade` moved to its own dedicated repo,

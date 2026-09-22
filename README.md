@@ -4,7 +4,7 @@
 
 A highly secure, very lightweight, query system
 
-**Version: see [`VERSION`](VERSION)** (currently `1.0.0`). `external/VERSION` and `internal/VERSION` are copies kept in sync for each component's own Docker build context -- bump all three together when releasing. Both `external/Dockerfile` and `internal/Dockerfile` bake this in as an `org.opencontainers.image.version` label via a `SEVERANCE_VERSION` build arg, e.g.:
+**Version: see [`VERSION`](VERSION)** (currently `1.1.0`). `external/VERSION` and `internal/VERSION` are copies kept in sync for each component's own Docker build context -- bump all three together when releasing. Both `external/Dockerfile` and `internal/Dockerfile` bake this in as an `org.opencontainers.image.version` label via a `SEVERANCE_VERSION` build arg, e.g.:
 
     docker build --build-arg SEVERANCE_VERSION="$(cat VERSION)" -t sevexternal:$(cat VERSION) external/
     docker build --build-arg SEVERANCE_VERSION="$(cat VERSION)" -t sevinternal:$(cat VERSION) internal/
