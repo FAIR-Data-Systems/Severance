@@ -4,6 +4,15 @@ All notable changes to this project are documented here. Format loosely follows 
 
 ## [Unreleased]
 
+### Security tooling
+
+- `Security/security-patch.sh` now also patches `facades/shallot-facade` (in-repo, Alpine/`apk`,
+  regenerates its `docker-compose.yml` from a new `shallot-docker-compose-template-template.yml`) and
+  `beacon-facade` (a different repo, `CARE-Semantic-Model-Version-2/implementation/Beacon2/facade` --
+  cloned fresh from `origin/main` each run, built/patched/pushed/scanned, tag printed but not written
+  back, matching how Sextans-Suite's own pipeline already treats that repo's `care2`/`fdpserv2`
+  images). `build_register.py`'s `IMAGE_INFO` updated for both.
+
 ### Added
 
 - **`facades/shallot-facade/`** -- a new Sinatra app that makes Severance look like a
