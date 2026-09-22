@@ -17,6 +17,13 @@ def parse_trivy_json(output)
       severity = vuln['Severity']&.upcase
       next unless %w[CRITICAL HIGH].include?(severity)
 
+      bundler_shadowed =
+        if vuln.key?('ShadowedByBundler')
+          vuln['ShadowedByBundler'] ? 'yes' : 'no'
+        else
+          ''
+        end
+
       filtered_vulns << {
         'Target' => result['Target'] || 'Unknown',
         'VulnerabilityID' => vuln['VulnerabilityID'] || 'N/A',
@@ -25,7 +32,13 @@ def parse_trivy_json(output)
         'FixedVersion' => vuln['FixedVersion'] || 'N/A',
         'Severity' => severity,
         'Title' => vuln['Title'] || 'N/A',
-        'PrimaryURL' => vuln['PrimaryURL'] || 'N/A'
+        'PrimaryURL' => vuln['PrimaryURL'] || 'N/A',
+        # Set only for gemspec findings that annotate_gem_shadowing.rb has already run against (see
+        # that script) -- whether the flagged on-disk copy is the one `bundle exec` actually loads, or
+        # a stale, unreachable default-gem copy shadowed by a newer Bundler-managed version. Blank for
+        # OS-package findings and any gemspec finding this wasn't run against.
+        'BundlerShadowed' => bundler_shadowed,
+        'BundlerShadowedDetail' => vuln['ShadowedDetail'] || ''
       }
     end
   end
@@ -52,7 +65,7 @@ def write_csv_output(vulns, output_file)
   end
 
   headers = %w[Target VulnerabilityID Package InstalledVersion FixedVersion Severity Title
-               PrimaryURL]
+               PrimaryURL BundlerShadowed BundlerShadowedDetail]
   CSV.open(output_file, 'w') do |csv|
     csv << headers
     vulns.each do |vuln|
@@ -64,7 +77,9 @@ def write_csv_output(vulns, output_file)
         vuln['FixedVersion'],
         vuln['Severity'],
         vuln['Title'],
-        vuln['PrimaryURL']
+        vuln['PrimaryURL'],
+        vuln['BundlerShadowed'],
+        vuln['BundlerShadowedDetail']
       ]
     end
   end
