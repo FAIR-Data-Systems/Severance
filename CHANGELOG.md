@@ -4,6 +4,17 @@ All notable changes to this project are documented here. Format loosely follows 
 
 ## [Unreleased]
 
+### Fixed
+
+- `facades/shallot-facade`'s image carried the base `ruby:3.2-alpine` image's own stale, vulnerable
+  `net-imap` default gem (`0.3.9`, `CVE-2026-42257`) -- an unused-by-this-app default gem, same class of
+  finding `external`/`internal` already fixed. First real run of the (newly extended)
+  `Security/security-patch.sh` pipeline caught it. Fixed the same way: pinned `net-imap ~> 0.5` in the
+  `Gemfile` (resolves to `0.6.7`, a fixed version) and explicitly uninstalled the base image's stale
+  copy in the Dockerfile (pinning alone installs the patched version alongside the old one, not in
+  place of it, since Bundler and RubyGems' default-gem installs use different paths). Verified live:
+  rebuilt image has only `net-imap 0.6.7` present, and still boots and serves correctly.
+
 ### Security tooling
 
 - `Security/security-patch.sh` now also patches `facades/shallot-facade` (in-repo, Alpine/`apk`,

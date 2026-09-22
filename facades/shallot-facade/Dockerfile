@@ -28,6 +28,15 @@ COPY --from=builder /usr/local/bundle /usr/local/bundle
 COPY --chown=shallotfacade:shallotfacade Gemfile Gemfile.lock VERSION app.rb config.ru ./
 COPY --chown=shallotfacade:shallotfacade lib/ ./lib/
 
+# net-imap ships as a Ruby "default gem" baked into this base image at whatever version that Ruby
+# patch release bundled (0.3.9 here) -- pinning a newer version in the Gemfile (unused by this app;
+# pulled in purely to get a patched version) installs it alongside the old one rather than replacing
+# it, since Bundler and RubyGems' own default-gem installation use different paths. The stale,
+# vulnerable default copy still sits on disk either way; remove it explicitly so it isn't there at
+# all. Same fix as external/internal's own Dockerfiles; must run before USER drops root below, since
+# removing a system gem needs write access to /usr/local/lib/ruby/gems.
+RUN gem uninstall -i /usr/local/lib/ruby/gems/3.2.0 net-imap --all --force || true
+
 ARG SHALLOT_FACADE_VERSION
 LABEL org.opencontainers.image.title="shallot-facade" \
       org.opencontainers.image.version="${SHALLOT_FACADE_VERSION}" \

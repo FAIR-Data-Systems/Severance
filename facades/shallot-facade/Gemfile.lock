@@ -2,10 +2,16 @@ GEM
   remote: https://rubygems.org/
   specs:
     base64 (0.3.0)
+    date (3.5.1)
     diff-lcs (1.6.2)
     json (2.21.2)
     logger (1.7.0)
     mustermann (3.1.1)
+    net-imap (0.6.7)
+      date
+      net-protocol
+    net-protocol (0.4.0)
+      timeout
     nio4r (2.7.5)
     puma (7.2.0)
       nio4r (~> 2.0)
@@ -42,6 +48,7 @@ GEM
       rack-session (>= 2.0.0, < 3)
       tilt (~> 2.0)
     tilt (2.8.0)
+    timeout (0.6.1)
 
 PLATFORMS
   ruby
@@ -49,6 +56,7 @@ PLATFORMS
 
 DEPENDENCIES
   json (~> 2.19)
+  net-imap (~> 0.5)
   puma (~> 7.2)
   rack-test (~> 2.2)
   rackup (~> 2.3)
@@ -56,25 +64,29 @@ DEPENDENCIES
   sinatra (~> 4.2)
 
 CHECKSUMS
-  base64 (0.3.0)
-  diff-lcs (1.6.2)
-  json (2.21.2)
-  logger (1.7.0)
-  mustermann (3.1.1)
-  nio4r (2.7.5)
-  puma (7.2.0)
-  rack (3.2.6)
-  rack-protection (4.2.1)
-  rack-session (2.1.2)
-  rack-test (2.2.0)
-  rackup (2.3.1)
-  rspec (3.13.2)
-  rspec-core (3.13.6)
-  rspec-expectations (3.13.5)
-  rspec-mocks (3.13.8)
-  rspec-support (3.13.7)
-  sinatra (4.2.1)
-  tilt (2.8.0)
+  base64 (0.3.0) sha256=27337aeabad6ffae05c265c450490628ef3ebd4b67be58257393227588f5a97b
+  date (3.5.1) sha256=750d06384d7b9c15d562c76291407d89e368dda4d4fff957eb94962d325a0dc0
+  diff-lcs (1.6.2) sha256=9ae0d2cba7d4df3075fe8cd8602a8604993efc0dfa934cff568969efb1909962
+  json (2.21.2) sha256=1f1d3b7cf2b3ba1a69beca0bb6db13d5438b80bff3cd54cdaaa620b9b07c1c6a
+  logger (1.7.0) sha256=196edec7cc44b66cfb40f9755ce11b392f21f7967696af15d274dde7edff0203
+  mustermann (3.1.1) sha256=4c6170c7234d5499c345562ba7c7dfe73e1754286dcc1abb053064d66a127198
+  net-imap (0.6.7) sha256=b5c9573be975d856de252ee851871724da66aa2d449b2482d5690bd12bc23660
+  net-protocol (0.4.0) sha256=f9f90c8c6f64794a45160bf422177a336db12809de3beeeaa26b88fcd2e8c853
+  nio4r (2.7.5) sha256=6c90168e48fb5f8e768419c93abb94ba2b892a1d0602cb06eef16d8b7df1dca1
+  puma (7.2.0) sha256=bf8ef4ab514a4e6d4554cb4326b2004eba5036ae05cf765cfe51aba9706a72a8
+  rack (3.2.6) sha256=5ed78e1f73b2e25679bec7d45ee2d4483cc4146eb1be0264fc4d94cb5ef212c2
+  rack-protection (4.2.1) sha256=cf6e2842df8c55f5e4d1a4be015e603e19e9bc3a7178bae58949ccbb58558bac
+  rack-session (2.1.2) sha256=595434f8c0c3473ae7d7ac56ecda6cc6dfd9d37c0b2b5255330aa1576967ffe8
+  rack-test (2.2.0) sha256=005a36692c306ac0b4a9350355ee080fd09ddef1148a5f8b2ac636c720f5c463
+  rackup (2.3.1) sha256=6c79c26753778e90983761d677a48937ee3192b3ffef6bc963c0950f94688868
+  rspec (3.13.2) sha256=206284a08ad798e61f86d7ca3e376718d52c0bc944626b2349266f239f820587
+  rspec-core (3.13.6) sha256=a8823c6411667b60a8bca135364351dda34cd55e44ff94c4be4633b37d828b2d
+  rspec-expectations (3.13.5) sha256=33a4d3a1d95060aea4c94e9f237030a8f9eae5615e9bd85718fe3a09e4b58836
+  rspec-mocks (3.13.8) sha256=086ad3d3d17533f4237643de0b5c42f04b66348c28bf6b9c2d3f4a3b01af1d47
+  rspec-support (3.13.7) sha256=0640e5570872aafefd79867901deeeeb40b0c9875a36b983d85f54fb7381c47c
+  sinatra (4.2.1) sha256=b7aeb9b11d046b552972ade834f1f9be98b185fa8444480688e3627625377080
+  tilt (2.8.0) sha256=ba472eb2716fe1e04112d6d219a9dae938ec09a6a1e2ad3ecc7922e79bde3721
+  timeout (0.6.1) sha256=78f57368a7e7bbadec56971f78a3f5ecbcfb59b7fcbb0a3ed6ddc08a5094accb
 
 BUNDLED WITH
   4.0.9
