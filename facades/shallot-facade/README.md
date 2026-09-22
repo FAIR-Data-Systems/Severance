@@ -41,6 +41,25 @@ capability of Severance itself, not of any one project that happens to use Sever
 5. `bundle exec rackup` (reads `SHALLOT_FACADE_PORT`/`SHALLOT_FACADE_BIND` from the environment, defaulting
    to `4567`/`0.0.0.0`)
 
+## Docker
+
+`docker compose up` (after step 2 above -- `docker-compose.yml` reads `.env`, and `SHALLOT_FACADE_PORT`
+if you changed it from the default). Hardened the same way as Severance's own `external/` and
+`internal/` compose files: `restart: always`, `security_opt: no-new-privileges`, `cap_drop: [ALL]`
+(no `cap_add` needed here -- this Dockerfile never runs as root at all, unlike `external/`'s
+chown-then-`gosu` step, since there are no volumes to chown), `mem_limit`/`cpus` ceilings. Builds from
+source (`build: .`) rather than pulling a published tag, since this facade has no registry image yet.
+
+## Configuration reference
+
+| Env var | Meaning |
+| --- | --- |
+| `SHALLOT_FACADE_PORT` / `SHALLOT_FACADE_BIND` | listen port/address, default `4567`/`0.0.0.0` |
+| `SHALLOT_FACADE_BASE_URL` | this facade's own externally-reachable base URL -- see `GET /openapi.json` below |
+| `SHALLOT_FACADE_SEVERANCE_URL` / `SHALLOT_FACADE_SEVERANCE_AUTH_TOKEN` | the Severance External this facade submits queries to, and its Bearer token |
+| `SHALLOT_FACADE_POLL_INTERVAL` / `SHALLOT_FACADE_POLL_CEILING` | blocking poll loop tuning while waiting for Severance Internal to answer a job |
+| `SHALLOT_FACADE_PRODUCES` | content type(s) this Severance deployment's `RESULT_FORMAT` actually returns -- documentation only, in the OpenAPI doc |
+
 ## Endpoints
 
 - `GET /` -- minimal banner (facade version, known query IDs). Unauthenticated.
@@ -83,13 +102,20 @@ callers.
 
 ## Known gaps
 
-- No integration test yet against a real Severance + Virtuoso instance -- only unit-level specs
-  stubbing `SeveranceClient`. Run one before relying on this in production (see the top-level plan /
-  handoff for the intended end-to-end check: install `IUCN_categories.rq` unchanged, confirm `GET
-  /IUCN_categories` returns the same shape Shallot returns today).
+- **Verified end to end** (2026-09-22) against a real Severance External + Internal + Virtuoso
+  instance, using FLAIR-GG's actual `IUCN_categories.rq` and `species_location.rq` unchanged: `GET
+  /IUCN_categories` and `GET /species_location?speciesname=...` both returned correct real data through
+  the full chain. That run also caught and fixed real bugs in Severance itself (see the top-level
+  `CHANGELOG.md`) and, separately, a stack-trace leak on `GET /`/`GET /openapi.json` when Severance was
+  unreachable -- `SeveranceClient#available_queries` now wraps connection-level failures, and a generic
+  `error StandardError` handler in `app.rb` is the backstop against the same class of mistake in any
+  future route (`show_exceptions :after_handler` otherwise renders a full backtrace for anything
+  uncaught, in every environment).
 - `QueryCatalogue`'s refresh-on-miss means a query *removed* from Internal stays visible here (and
   routable, until Severance itself rejects the `query_id`) until the process restarts or another
   lookup happens to trigger a refresh that drops it. Not a correctness problem (Severance is still the
   source of truth for whether a query actually runs), just a stale-listing edge case.
-- The Docker image build is unverified in this environment (network access to pull base images may be
-  blocked by a sandbox policy) -- worth a real `docker build` before relying on it.
+- The Docker image build **is verified** -- `docker build` succeeds and the container runs correctly as
+  its non-root user (fixed a missing `Gemfile`/`Gemfile.lock` copy in the runtime stage that made every
+  container exit immediately with "Could not locate Gemfile", found by actually running it for the
+  first time).
