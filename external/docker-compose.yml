@@ -1,6 +1,6 @@
 services:
   external:
-    image: fairdatasystems/sevexternal:2026-09-10
+    image: fairdatasystems/sevexternal:2026-09-22
     restart: always
     security_opt:
       - "no-new-privileges:true"

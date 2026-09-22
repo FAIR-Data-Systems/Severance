@@ -1,7 +1,6 @@
 services:
   shallot-facade:
-    image: fairdatasystems/shallotfacade:local
-    build: .
+    image: fairdatasystems/shallotfacade:2026-09-22
     restart: always
     security_opt:
       - "no-new-privileges:true"
