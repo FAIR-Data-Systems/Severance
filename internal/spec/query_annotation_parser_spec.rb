@@ -127,6 +127,60 @@ RSpec.describe QueryAnnotationParser::Parser do
       end
     end
 
+    context 'with a #+ parameters: block (GRLC dialect, no type-suffixed inline placeholder)' do
+      before do
+        # Mirrors FLAIR-GG's species_location.rq: a bare `?_speciesname` placeholder (no `_type`
+        # suffix), so extract_parameters alone would find nothing -- the parameter is declared only
+        # via the `#+ parameters:` block instead.
+        temp_file.puts '#+summary: the geo-coordinates for every sample of a given species'
+        temp_file.puts '#+method: GET'
+        temp_file.puts '#+parameters:'
+        temp_file.puts '#+  - name: speciesname'
+        temp_file.puts '#+    type: string'
+        temp_file.puts '#+    description: The species scientific name'
+        temp_file.puts '#+    required: true'
+        temp_file.puts '#+    default: "Arabidopsis thaliana"'
+        temp_file.puts ''
+        temp_file.puts 'SELECT ?scientific_name WHERE {'
+        temp_file.puts '  ?taxon dwc:scientificName ?scientific_name .'
+        temp_file.puts '  FILTER(contains(lcase(str(?scientific_name)), lcase(?_speciesname)))'
+        temp_file.puts '}'
+        temp_file.rewind
+      end
+
+      it 'folds the parameter into variables, variable_types, defaults, and required' do
+        metadata = described_class.parse(temp_file.path)
+
+        expect(metadata['variables']).to contain_exactly('speciesname')
+        expect(metadata['variable_types']).to eq({ 'speciesname' => 'string' })
+        expect(metadata['defaults']).to eq({ 'speciesname' => 'Arabidopsis thaliana' })
+        expect(metadata['required']).to contain_exactly('speciesname')
+        expect(metadata['parameters']).to eq(
+          [{ 'name' => 'speciesname', 'type' => 'string', 'description' => 'The species scientific name',
+             'required' => true, 'default' => 'Arabidopsis thaliana' }]
+        )
+      end
+    end
+
+    context 'with a #+ parameters: block alongside an inline typed placeholder' do
+      before do
+        # The inline `?_age_integer` is found first by extract_parameters; the parameters block also
+        # mentions `age` (untyped) -- the inline type must win, not be overwritten by the block.
+        temp_file.puts '#+parameters:'
+        temp_file.puts '#+  - name: age'
+        temp_file.puts '#+    type: string'
+        temp_file.puts ''
+        temp_file.puts 'SELECT ?p WHERE { ?p :age ?_age_integer . }'
+        temp_file.rewind
+      end
+
+      it 'does not let the parameters block override a type already found inline' do
+        metadata = described_class.parse(temp_file.path)
+
+        expect(metadata['variable_types']).to eq({ 'age' => 'integer' })
+      end
+    end
+
     context 'when no decorators are present' do
       before do
         temp_file.puts 'SELECT * WHERE { ?s ?p ?o . }'

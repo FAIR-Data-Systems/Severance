@@ -17,6 +17,13 @@ All notable changes to this project are documented here. Format loosely follows 
   like every other caller-facing route. Covered by a new standalone check,
   `external/check_before_filter.rb` (uses `Rack::MockRequest`, already available transitively via
   `sinatra`/`rackup` -- no new gem added to `external/`, which carries no test framework by design).
+- `internal/annotation_parser.rb` ignored a query's `#+ parameters:` block entirely -- GRLC's own
+  dialect for declaring a parameter that has no type-suffixed inline placeholder (`?_name` rather than
+  `?_name_type`), used by e.g. FLAIR-GG's `species_location.rq`. A parameter declared only this way
+  produced empty `variables`/`variable_types`, and a continuation line of the block (e.g. `type:
+  string`) was misread as a new top-level metadata key, also silently resetting the parser's list-item
+  tracking. Now folded into `variables`/`variable_types`/`defaults`/(new) `required`, without
+  overwriting anything already found inline or via an explicit `#+ defaults:` block.
 
 ### Changed
 
