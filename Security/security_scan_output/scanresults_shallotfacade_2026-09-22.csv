@@ -1,3 +1,3 @@
-Target,VulnerabilityID,Package,InstalledVersion,FixedVersion,Severity,Title,PrimaryURL
-Ruby,CVE-2026-41316,erb,4.0.2,"~> 4.0.3.1, ~> 4.0.4.1, ~> 6.0.1.1, >= 6.0.4",HIGH,erb: ERB: Arbitrary code execution via deserialization bypass,https://avd.aquasec.com/nvd/cve-2026-41316
-Ruby,CVE-2026-80212,resolv,0.2.3,"~> 0.3.2, >= 0.7.2",HIGH,resolv: resolv gem: Denial of Service via uncontrolled memory growth from crafted DNS responses,https://avd.aquasec.com/nvd/cve-2026-80212
+Target,VulnerabilityID,Package,InstalledVersion,FixedVersion,Severity,Title,PrimaryURL,BundlerShadowed,BundlerShadowedDetail
+Ruby,CVE-2026-41316,erb,4.0.2,"~> 4.0.3.1, ~> 4.0.4.1, ~> 6.0.1.1, >= 6.0.4",HIGH,erb: ERB: Arbitrary code execution via deserialization bypass,https://avd.aquasec.com/nvd/cve-2026-41316,yes,"bundle exec loads erb 6.0.7 (Gemfile-pinned); the flagged 4.0.2 is a stale copy on disk, never loaded at runtime"
+Ruby,CVE-2026-80212,resolv,0.2.3,"~> 0.3.2, >= 0.7.2",HIGH,resolv: resolv gem: Denial of Service via uncontrolled memory growth from crafted DNS responses,https://avd.aquasec.com/nvd/cve-2026-80212,yes,"bundle exec loads resolv 0.8.0 (Gemfile-pinned); the flagged 0.2.3 is a stale copy on disk, never loaded at runtime"

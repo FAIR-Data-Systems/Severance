@@ -145,8 +145,18 @@ def main():
 
         shadowed = shadowed_summary(agg)
 
-        if (image, cve) in existing:
-            decision, notes = existing[(image, cve)]
+        # A prior decision is normally sticky (see module docstring) -- but if the finding has
+        # since become shadowed (the Gemfile now pins a fixed version, annotate_gem_shadowing.rb
+        # confirmed bundle exec never loads the flagged on-disk copy), the old decision predates
+        # that fact and was never actually reviewed against it. Drop it so this row falls through
+        # to the shadowed branch below and gets relabeled, instead of staying stuck on whatever
+        # generic (exposure, control) disposition it got before the fix landed.
+        prior = existing.get((image, cve))
+        if prior and prior[0] != "SHADOWED" and shadowed == "yes":
+            prior = None
+
+        if prior:
+            decision, notes = prior
         elif cve in MANUAL_DECISIONS:
             decision, notes = MANUAL_DECISIONS[cve]
         elif shadowed == "yes":

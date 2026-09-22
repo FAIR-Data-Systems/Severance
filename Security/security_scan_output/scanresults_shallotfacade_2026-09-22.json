@@ -3,9 +3,9 @@
   "Trivy": {
     "Version": "0.69.1"
   },
-  "ReportID": "01a0c93c-8dbf-737a-93a7-4eedce48a775",
-  "CreatedAt": "2026-09-22T15:09:43.999229758+02:00",
-  "ArtifactID": "sha256:d4d82d28d23763338f25a55ae39a7455f1a45316ab58bcb3a77cd84eac402bfd",
+  "ReportID": "01a0c9cb-9f5c-714a-818f-59dcd2e96843",
+  "CreatedAt": "2026-09-22T17:46:00.156087582+02:00",
+  "ArtifactID": "sha256:ceeeb64e2fcacc09c15b074eb901832d571668c5a0d9d13b8c34d2e68d5d8275",
   "ArtifactName": "fairdatasystems/shallotfacade:2026-09-22",
   "ArtifactType": "container_image",
   "Metadata": {
@@ -14,7 +14,7 @@
       "Family": "alpine",
       "Name": "3.23.4"
     },
-    "ImageID": "sha256:54f4478b7d8248f7647384afc01d9bb3242ab3af76786caa3d85ffe0811669c6",
+    "ImageID": "sha256:fe4ebd8013ab50c17d258027202a317a781c4186ad92858f8aa3e967ce79ae24",
     "DiffIDs": [
       "sha256:29df493baa13de438d6d2ece3a8333032e0b7b9b9d8cce4ee82194da255f61e1",
       "sha256:41c599a63faff835c672ce00e4bb14da13ecdd4b31c274f178223ea8ce94293a",
@@ -28,18 +28,15 @@
       "sha256:b6652e3af7c4f011c0e3b32c26a268ca6347d4be9504b4161d6c33701f45f7fd",
       "sha256:93048402f338f26b0c959c0b20ae49f1379e35a62774b6302472fd63c48ca6cd",
       "sha256:93048402f338f26b0c959c0b20ae49f1379e35a62774b6302472fd63c48ca6cd",
-      "sha256:1b69526e1f3713a7b9b1669765ca1c0e1346c3f0aac08e62c363a6e8c277ea2b"
+      "sha256:57051bf15e9182262bcc8b56f5d2a8213c6f4bdbf5767ea565aef59db8f0459c"
     ],
     "RepoTags": [
       "fairdatasystems/shallotfacade:2026-09-22"
     ],
-    "RepoDigests": [
-      "fairdatasystems/shallotfacade@sha256:a023e63e39066d5b010f84c9248535eb7a184b2392e4397ffd897cf6ed2f37cf"
-    ],
     "Reference": "fairdatasystems/shallotfacade:2026-09-22",
     "ImageConfig": {
       "architecture": "amd64",
-      "created": "2026-09-22T13:09:19.454985128Z",
+      "created": "2026-09-22T15:45:56.372601359Z",
       "docker_version": "28.2.2",
       "history": [
         {
@@ -55,7 +52,7 @@
         },
         {
           "created": "2026-04-15T20:55:30Z",
-          "created_by": "RUN /bin/sh -c set -eux; \tmkdir -p /usr/local/etc; \techo 'gem: --no-document' \u003e\u003e /usr/local/etc/gemrc # buildkit",
+          "created_by": "RUN /bin/sh -c set -eux; \tmkdir -p /usr/local/etc; \techo 'gem: --no-document' >> /usr/local/etc/gemrc # buildkit",
           "comment": "buildkit.dockerfile.v0"
         },
         {
@@ -118,7 +115,7 @@
         },
         {
           "created": "2026-09-22T12:27:27Z",
-          "created_by": "RUN /bin/sh -c addgroup -S shallotfacade \u0026\u0026     adduser -S -G shallotfacade -h /app -s /sbin/nologin shallotfacade # buildkit",
+          "created_by": "RUN /bin/sh -c addgroup -S shallotfacade &&     adduser -S -G shallotfacade -h /app -s /sbin/nologin shallotfacade # buildkit",
           "comment": "buildkit.dockerfile.v0"
         },
         {
@@ -193,7 +190,7 @@
           "empty_layer": true
         },
         {
-          "created": "2026-09-22T13:09:19Z",
+          "created": "2026-09-22T15:45:56Z",
           "created_by": "sh -c bundle exec rackup -o ${SHALLOT_FACADE_BIND} -p ${SHALLOT_FACADE_PORT}"
         }
       ],
@@ -213,7 +210,7 @@
           "sha256:b6652e3af7c4f011c0e3b32c26a268ca6347d4be9504b4161d6c33701f45f7fd",
           "sha256:93048402f338f26b0c959c0b20ae49f1379e35a62774b6302472fd63c48ca6cd",
           "sha256:93048402f338f26b0c959c0b20ae49f1379e35a62774b6302472fd63c48ca6cd",
-          "sha256:1b69526e1f3713a7b9b1669765ca1c0e1346c3f0aac08e62c363a6e8c277ea2b"
+          "sha256:57051bf15e9182262bcc8b56f5d2a8213c6f4bdbf5767ea565aef59db8f0459c"
         ]
       },
       "config": {
@@ -223,7 +220,7 @@
           "bundle exec rackup -o ${SHALLOT_FACADE_BIND} -p ${SHALLOT_FACADE_PORT}"
         ],
         "Env": [
-          "ENCRYPTION_KEY_HEX=abac392c18d4fa5dfabdd78d2c93c3bd6fbfb24b608a2ee309a52de201ec135a",
+          "ENCRYPTION_KEY_HEX=43ef08394c8f3158da6f2ed527d0f22a90a499f671c3c68464d0339a50e90ea1",
           "PATH=/usr/local/bundle/bin:/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin",
           "LANG=C.UTF-8",
           "RUBY_VERSION=3.2.11",
@@ -298,7 +295,7 @@
       },
       {
         "Size": 9606656,
-        "DiffID": "sha256:1b69526e1f3713a7b9b1669765ca1c0e1346c3f0aac08e62c363a6e8c277ea2b"
+        "DiffID": "sha256:57051bf15e9182262bcc8b56f5d2a8213c6f4bdbf5767ea565aef59db8f0459c"
       }
     ]
   },
@@ -312,7 +309,7 @@
           "ID": ".ruby-rundeps@20260415.205728",
           "Name": ".ruby-rundeps",
           "Identifier": {
-            "PURL": "pkg:apk/alpine/.ruby-rundeps@20260415.205728?arch=noarch\u0026distro=3.23.4",
+            "PURL": "pkg:apk/alpine/.ruby-rundeps@20260415.205728?arch=noarch&distro=3.23.4",
             "UID": "131f98145a54610b"
           },
           "Version": "20260415.205728",
@@ -339,7 +336,7 @@
           "ID": "alpine-baselayout@3.7.2-r0",
           "Name": "alpine-baselayout",
           "Identifier": {
-            "PURL": "pkg:apk/alpine/alpine-baselayout@3.7.2-r0?arch=x86_64\u0026distro=3.23.4",
+            "PURL": "pkg:apk/alpine/alpine-baselayout@3.7.2-r0?arch=x86_64&distro=3.23.4",
             "UID": "ff3090489ca40326"
           },
           "Version": "3.7.2-r0",
@@ -349,7 +346,7 @@
           "Licenses": [
             "GPL-2.0-only"
           ],
-          "Maintainer": "Natanael Copa \u003cncopa@alpinelinux.org\u003e",
+          "Maintainer": "Natanael Copa <ncopa@alpinelinux.org>",
           "DependsOn": [
             "alpine-baselayout-data@3.7.2-r0",
             "busybox-binsh@1.37.0-r30"
@@ -379,7 +376,7 @@
           "ID": "alpine-baselayout-data@3.7.2-r0",
           "Name": "alpine-baselayout-data",
           "Identifier": {
-            "PURL": "pkg:apk/alpine/alpine-baselayout-data@3.7.2-r0?arch=x86_64\u0026distro=3.23.4",
+            "PURL": "pkg:apk/alpine/alpine-baselayout-data@3.7.2-r0?arch=x86_64&distro=3.23.4",
             "UID": "78c0ed61d7df9a7e"
           },
           "Version": "3.7.2-r0",
@@ -389,7 +386,7 @@
           "Licenses": [
             "GPL-2.0-only"
           ],
-          "Maintainer": "Natanael Copa \u003cncopa@alpinelinux.org\u003e",
+          "Maintainer": "Natanael Copa <ncopa@alpinelinux.org>",
           "Layer": {
             "DiffID": "sha256:29df493baa13de438d6d2ece3a8333032e0b7b9b9d8cce4ee82194da255f61e1"
           },
@@ -417,7 +414,7 @@
           "ID": "alpine-keys@2.6-r0",
           "Name": "alpine-keys",
           "Identifier": {
-            "PURL": "pkg:apk/alpine/alpine-keys@2.6-r0?arch=x86_64\u0026distro=3.23.4",
+            "PURL": "pkg:apk/alpine/alpine-keys@2.6-r0?arch=x86_64&distro=3.23.4",
             "UID": "2c7cb90de388aa7d"
           },
           "Version": "2.6-r0",
@@ -427,7 +424,7 @@
           "Licenses": [
             "MIT"
           ],
-          "Maintainer": "Natanael Copa \u003cncopa@alpinelinux.org\u003e",
+          "Maintainer": "Natanael Copa <ncopa@alpinelinux.org>",
           "Layer": {
             "DiffID": "sha256:29df493baa13de438d6d2ece3a8333032e0b7b9b9d8cce4ee82194da255f61e1"
           },
@@ -481,7 +478,7 @@
           "ID": "alpine-release@3.23.6-r0",
           "Name": "alpine-release",
           "Identifier": {
-            "PURL": "pkg:apk/alpine/alpine-release@3.23.6-r0?arch=x86_64\u0026distro=3.23.4",
+            "PURL": "pkg:apk/alpine/alpine-release@3.23.6-r0?arch=x86_64&distro=3.23.4",
             "UID": "91524cfdd8621878"
           },
           "Version": "3.23.6-r0",
@@ -491,12 +488,12 @@
           "Licenses": [
             "MIT"
           ],
-          "Maintainer": "Natanael Copa \u003cncopa@alpinelinux.org\u003e",
+          "Maintainer": "Natanael Copa <ncopa@alpinelinux.org>",
           "DependsOn": [
             "alpine-keys@2.6-r0"
           ],
           "Layer": {
-            "DiffID": "sha256:1b69526e1f3713a7b9b1669765ca1c0e1346c3f0aac08e62c363a6e8c277ea2b"
+            "DiffID": "sha256:57051bf15e9182262bcc8b56f5d2a8213c6f4bdbf5767ea565aef59db8f0459c"
           },
           "Digest": "sha1:9a222ee46b43276b7e607f66dab5faf915d13984",
           "InstalledFiles": [
@@ -512,7 +509,7 @@
           "ID": "apk-tools@3.0.8-r0",
           "Name": "apk-tools",
           "Identifier": {
-            "PURL": "pkg:apk/alpine/apk-tools@3.0.8-r0?arch=x86_64\u0026distro=3.23.4",
+            "PURL": "pkg:apk/alpine/apk-tools@3.0.8-r0?arch=x86_64&distro=3.23.4",
             "UID": "437cfb31b68155db"
           },
           "Version": "3.0.8-r0",
@@ -522,7 +519,7 @@
           "Licenses": [
             "GPL-2.0-only"
           ],
-          "Maintainer": "Natanael Copa \u003cncopa@alpinelinux.org\u003e",
+          "Maintainer": "Natanael Copa <ncopa@alpinelinux.org>",
           "DependsOn": [
             "ca-certificates-bundle@20260909-r0",
             "libapk@3.0.8-r0",
@@ -531,7 +528,7 @@
             "zlib@1.3.2-r0"
           ],
           "Layer": {
-            "DiffID": "sha256:1b69526e1f3713a7b9b1669765ca1c0e1346c3f0aac08e62c363a6e8c277ea2b"
+            "DiffID": "sha256:57051bf15e9182262bcc8b56f5d2a8213c6f4bdbf5767ea565aef59db8f0459c"
           },
           "Digest": "sha1:fa7a8422abbbb5e179033cee5455124007817b22",
           "InstalledFiles": [
@@ -543,7 +540,7 @@
           "ID": "busybox@1.37.0-r30",
           "Name": "busybox",
           "Identifier": {
-            "PURL": "pkg:apk/alpine/busybox@1.37.0-r30?arch=x86_64\u0026distro=3.23.4",
+            "PURL": "pkg:apk/alpine/busybox@1.37.0-r30?arch=x86_64&distro=3.23.4",
             "UID": "9647681d0b54db77"
           },
           "Version": "1.37.0-r30",
@@ -553,7 +550,7 @@
           "Licenses": [
             "GPL-2.0-only"
           ],
-          "Maintainer": "Sören Tempel \u003csoeren+alpine@soeren-tempel.net\u003e",
+          "Maintainer": "Sören Tempel <soeren+alpine@soeren-tempel.net>",
           "DependsOn": [
             "musl@1.2.5-r23"
           ],
@@ -576,7 +573,7 @@
           "ID": "busybox-binsh@1.37.0-r30",
           "Name": "busybox-binsh",
           "Identifier": {
-            "PURL": "pkg:apk/alpine/busybox-binsh@1.37.0-r30?arch=x86_64\u0026distro=3.23.4",
+            "PURL": "pkg:apk/alpine/busybox-binsh@1.37.0-r30?arch=x86_64&distro=3.23.4",
             "UID": "3e18d05d46a6f46f"
           },
           "Version": "1.37.0-r30",
@@ -586,7 +583,7 @@
           "Licenses": [
             "GPL-2.0-only"
           ],
-          "Maintainer": "Sören Tempel \u003csoeren+alpine@soeren-tempel.net\u003e",
+          "Maintainer": "Sören Tempel <soeren+alpine@soeren-tempel.net>",
           "DependsOn": [
             "busybox@1.37.0-r30"
           ],
@@ -603,7 +600,7 @@
           "ID": "ca-certificates-bundle@20260909-r0",
           "Name": "ca-certificates-bundle",
           "Identifier": {
-            "PURL": "pkg:apk/alpine/ca-certificates-bundle@20260909-r0?arch=x86_64\u0026distro=3.23.4",
+            "PURL": "pkg:apk/alpine/ca-certificates-bundle@20260909-r0?arch=x86_64&distro=3.23.4",
             "UID": "56ee61c571f493d"
           },
           "Version": "20260909-r0",
@@ -614,9 +611,9 @@
             "MPL-2.0",
             "MIT"
           ],
-          "Maintainer": "Natanael Copa \u003cncopa@alpinelinux.org\u003e",
+          "Maintainer": "Natanael Copa <ncopa@alpinelinux.org>",
           "Layer": {
-            "DiffID": "sha256:1b69526e1f3713a7b9b1669765ca1c0e1346c3f0aac08e62c363a6e8c277ea2b"
+            "DiffID": "sha256:57051bf15e9182262bcc8b56f5d2a8213c6f4bdbf5767ea565aef59db8f0459c"
           },
           "Digest": "sha1:0b7f24b8a713bf4bb869de377505a5040239a7bc",
           "InstalledFiles": [
@@ -631,7 +628,7 @@
           "ID": "gmp@6.3.0-r4",
           "Name": "gmp",
           "Identifier": {
-            "PURL": "pkg:apk/alpine/gmp@6.3.0-r4?arch=x86_64\u0026distro=3.23.4",
+            "PURL": "pkg:apk/alpine/gmp@6.3.0-r4?arch=x86_64&distro=3.23.4",
             "UID": "994ae32f98e255f"
           },
           "Version": "6.3.0-r4",
@@ -642,7 +639,7 @@
             "LGPL-3.0-or-later",
             "GPL-2.0-or-later"
           ],
-          "Maintainer": "Natanael Copa \u003cncopa@alpinelinux.org\u003e",
+          "Maintainer": "Natanael Copa <ncopa@alpinelinux.org>",
           "DependsOn": [
             "musl@1.2.5-r23"
           ],
@@ -660,7 +657,7 @@
           "ID": "libapk@3.0.8-r0",
           "Name": "libapk",
           "Identifier": {
-            "PURL": "pkg:apk/alpine/libapk@3.0.8-r0?arch=x86_64\u0026distro=3.23.4",
+            "PURL": "pkg:apk/alpine/libapk@3.0.8-r0?arch=x86_64&distro=3.23.4",
             "UID": "fb5e89a1747d84c2"
           },
           "Version": "3.0.8-r0",
@@ -670,7 +667,7 @@
           "Licenses": [
             "GPL-2.0-only"
           ],
-          "Maintainer": "Natanael Copa \u003cncopa@alpinelinux.org\u003e",
+          "Maintainer": "Natanael Copa <ncopa@alpinelinux.org>",
           "DependsOn": [
             "libcrypto3@3.5.8-r0",
             "libssl3@3.5.8-r0",
@@ -678,7 +675,7 @@
             "zlib@1.3.2-r0"
           ],
           "Layer": {
-            "DiffID": "sha256:1b69526e1f3713a7b9b1669765ca1c0e1346c3f0aac08e62c363a6e8c277ea2b"
+            "DiffID": "sha256:57051bf15e9182262bcc8b56f5d2a8213c6f4bdbf5767ea565aef59db8f0459c"
           },
           "Digest": "sha1:2913286d1d02641d392289ba525850be6856df11",
           "InstalledFiles": [
@@ -690,7 +687,7 @@
           "ID": "libcrypto3@3.5.8-r0",
           "Name": "libcrypto3",
           "Identifier": {
-            "PURL": "pkg:apk/alpine/libcrypto3@3.5.8-r0?arch=x86_64\u0026distro=3.23.4",
+            "PURL": "pkg:apk/alpine/libcrypto3@3.5.8-r0?arch=x86_64&distro=3.23.4",
             "UID": "6f720d761ae51746"
           },
           "Version": "3.5.8-r0",
@@ -700,12 +697,12 @@
           "Licenses": [
             "Apache-2.0"
           ],
-          "Maintainer": "Natanael Copa \u003cncopa@alpinelinux.org\u003e",
+          "Maintainer": "Natanael Copa <ncopa@alpinelinux.org>",
           "DependsOn": [
             "musl@1.2.5-r23"
           ],
           "Layer": {
-            "DiffID": "sha256:1b69526e1f3713a7b9b1669765ca1c0e1346c3f0aac08e62c363a6e8c277ea2b"
+            "DiffID": "sha256:57051bf15e9182262bcc8b56f5d2a8213c6f4bdbf5767ea565aef59db8f0459c"
           },
           "Digest": "sha1:c5d20a5036bd12c5130652879054be658429c1d5",
           "InstalledFiles": [
@@ -726,7 +723,7 @@
           "ID": "libffi@3.5.2-r0",
           "Name": "libffi",
           "Identifier": {
-            "PURL": "pkg:apk/alpine/libffi@3.5.2-r0?arch=x86_64\u0026distro=3.23.4",
+            "PURL": "pkg:apk/alpine/libffi@3.5.2-r0?arch=x86_64&distro=3.23.4",
             "UID": "8fe4c0ede91e6f13"
           },
           "Version": "3.5.2-r0",
@@ -736,7 +733,7 @@
           "Licenses": [
             "MIT"
           ],
-          "Maintainer": "Natanael Copa \u003cncopa@alpinelinux.org\u003e",
+          "Maintainer": "Natanael Copa <ncopa@alpinelinux.org>",
           "DependsOn": [
             "musl@1.2.5-r23"
           ],
@@ -754,7 +751,7 @@
           "ID": "libgcc@15.2.0-r2",
           "Name": "libgcc",
           "Identifier": {
-            "PURL": "pkg:apk/alpine/libgcc@15.2.0-r2?arch=x86_64\u0026distro=3.23.4",
+            "PURL": "pkg:apk/alpine/libgcc@15.2.0-r2?arch=x86_64&distro=3.23.4",
             "UID": "89fff20701e56ab7"
           },
           "Version": "15.2.0-r2",
@@ -765,7 +762,7 @@
             "GPL-2.0-or-later",
             "LGPL-2.1-or-later"
           ],
-          "Maintainer": "Ariadne Conill \u003cariadne@dereferenced.org\u003e",
+          "Maintainer": "Ariadne Conill <ariadne@dereferenced.org>",
           "DependsOn": [
             "musl@1.2.5-r23"
           ],
@@ -782,7 +779,7 @@
           "ID": "libncursesw@6.5_p20251123-r0",
           "Name": "libncursesw",
           "Identifier": {
-            "PURL": "pkg:apk/alpine/libncursesw@6.5_p20251123-r0?arch=x86_64\u0026distro=3.23.4",
+            "PURL": "pkg:apk/alpine/libncursesw@6.5_p20251123-r0?arch=x86_64&distro=3.23.4",
             "UID": "edc30eb15f442d49"
           },
           "Version": "6.5_p20251123-r0",
@@ -792,7 +789,7 @@
           "Licenses": [
             "X-11"
           ],
-          "Maintainer": "Natanael Copa \u003cncopa@alpinelinux.org\u003e",
+          "Maintainer": "Natanael Copa <ncopa@alpinelinux.org>",
           "DependsOn": [
             "musl@1.2.5-r23",
             "ncurses-terminfo-base@6.5_p20251123-r0"
@@ -811,7 +808,7 @@
           "ID": "libssl3@3.5.8-r0",
           "Name": "libssl3",
           "Identifier": {
-            "PURL": "pkg:apk/alpine/libssl3@3.5.8-r0?arch=x86_64\u0026distro=3.23.4",
+            "PURL": "pkg:apk/alpine/libssl3@3.5.8-r0?arch=x86_64&distro=3.23.4",
             "UID": "1aafb9a42f29e87a"
           },
           "Version": "3.5.8-r0",
@@ -821,13 +818,13 @@
           "Licenses": [
             "Apache-2.0"
           ],
-          "Maintainer": "Natanael Copa \u003cncopa@alpinelinux.org\u003e",
+          "Maintainer": "Natanael Copa <ncopa@alpinelinux.org>",
           "DependsOn": [
             "libcrypto3@3.5.8-r0",
             "musl@1.2.5-r23"
           ],
           "Layer": {
-            "DiffID": "sha256:1b69526e1f3713a7b9b1669765ca1c0e1346c3f0aac08e62c363a6e8c277ea2b"
+            "DiffID": "sha256:57051bf15e9182262bcc8b56f5d2a8213c6f4bdbf5767ea565aef59db8f0459c"
           },
           "Digest": "sha1:07184887491e0feffa57184419b1387450047bb9",
           "InstalledFiles": [
@@ -839,7 +836,7 @@
           "ID": "musl@1.2.5-r23",
           "Name": "musl",
           "Identifier": {
-            "PURL": "pkg:apk/alpine/musl@1.2.5-r23?arch=x86_64\u0026distro=3.23.4",
+            "PURL": "pkg:apk/alpine/musl@1.2.5-r23?arch=x86_64&distro=3.23.4",
             "UID": "dca30b3fd6708a32"
           },
           "Version": "1.2.5-r23",
@@ -849,7 +846,7 @@
           "Licenses": [
             "MIT"
           ],
-          "Maintainer": "Natanael Copa \u003cncopa@alpinelinux.org\u003e",
+          "Maintainer": "Natanael Copa <ncopa@alpinelinux.org>",
           "Layer": {
             "DiffID": "sha256:29df493baa13de438d6d2ece3a8333032e0b7b9b9d8cce4ee82194da255f61e1"
           },
@@ -864,7 +861,7 @@
           "ID": "musl-utils@1.2.5-r23",
           "Name": "musl-utils",
           "Identifier": {
-            "PURL": "pkg:apk/alpine/musl-utils@1.2.5-r23?arch=x86_64\u0026distro=3.23.4",
+            "PURL": "pkg:apk/alpine/musl-utils@1.2.5-r23?arch=x86_64&distro=3.23.4",
             "UID": "ffcf7198a9776c5f"
           },
           "Version": "1.2.5-r23",
@@ -876,7 +873,7 @@
             "BSD-2-Clause",
             "GPL-2.0-or-later"
           ],
-          "Maintainer": "Natanael Copa \u003cncopa@alpinelinux.org\u003e",
+          "Maintainer": "Natanael Copa <ncopa@alpinelinux.org>",
           "DependsOn": [
             "musl@1.2.5-r23",
             "scanelf@1.3.8-r2"
@@ -898,7 +895,7 @@
           "ID": "ncurses-terminfo-base@6.5_p20251123-r0",
           "Name": "ncurses-terminfo-base",
           "Identifier": {
-            "PURL": "pkg:apk/alpine/ncurses-terminfo-base@6.5_p20251123-r0?arch=x86_64\u0026distro=3.23.4",
+            "PURL": "pkg:apk/alpine/ncurses-terminfo-base@6.5_p20251123-r0?arch=x86_64&distro=3.23.4",
             "UID": "5acf10991828fa7a"
           },
           "Version": "6.5_p20251123-r0",
@@ -908,7 +905,7 @@
           "Licenses": [
             "X-11"
           ],
-          "Maintainer": "Natanael Copa \u003cncopa@alpinelinux.org\u003e",
+          "Maintainer": "Natanael Copa <ncopa@alpinelinux.org>",
           "Layer": {
             "DiffID": "sha256:0f1f2c044176151c6fb5627b651bcc36a60e59edac7c7989901f20f72846f8ae"
           },
@@ -962,7 +959,7 @@
           "ID": "readline@8.3.1-r0",
           "Name": "readline",
           "Identifier": {
-            "PURL": "pkg:apk/alpine/readline@8.3.1-r0?arch=x86_64\u0026distro=3.23.4",
+            "PURL": "pkg:apk/alpine/readline@8.3.1-r0?arch=x86_64&distro=3.23.4",
             "UID": "6e963727578deb58"
           },
           "Version": "8.3.1-r0",
@@ -972,7 +969,7 @@
           "Licenses": [
             "GPL-3.0-or-later"
           ],
-          "Maintainer": "Celeste \u003ccielesti@protonmail.com\u003e",
+          "Maintainer": "Celeste <cielesti@protonmail.com>",
           "DependsOn": [
             "libncursesw@6.5_p20251123-r0",
             "musl@1.2.5-r23"
@@ -992,7 +989,7 @@
           "ID": "scanelf@1.3.8-r2",
           "Name": "scanelf",
           "Identifier": {
-            "PURL": "pkg:apk/alpine/scanelf@1.3.8-r2?arch=x86_64\u0026distro=3.23.4",
+            "PURL": "pkg:apk/alpine/scanelf@1.3.8-r2?arch=x86_64&distro=3.23.4",
             "UID": "4efd612ed6f16dca"
           },
           "Version": "1.3.8-r2",
@@ -1002,7 +999,7 @@
           "Licenses": [
             "GPL-2.0-only"
           ],
-          "Maintainer": "Natanael Copa \u003cncopa@alpinelinux.org\u003e",
+          "Maintainer": "Natanael Copa <ncopa@alpinelinux.org>",
           "DependsOn": [
             "musl@1.2.5-r23"
           ],
@@ -1019,7 +1016,7 @@
           "ID": "ssl_client@1.37.0-r30",
           "Name": "ssl_client",
           "Identifier": {
-            "PURL": "pkg:apk/alpine/ssl_client@1.37.0-r30?arch=x86_64\u0026distro=3.23.4",
+            "PURL": "pkg:apk/alpine/ssl_client@1.37.0-r30?arch=x86_64&distro=3.23.4",
             "UID": "92299c558ff421b3"
           },
           "Version": "1.37.0-r30",
@@ -1029,7 +1026,7 @@
           "Licenses": [
             "GPL-2.0-only"
           ],
-          "Maintainer": "Sören Tempel \u003csoeren+alpine@soeren-tempel.net\u003e",
+          "Maintainer": "Sören Tempel <soeren+alpine@soeren-tempel.net>",
           "DependsOn": [
             "libcrypto3@3.5.8-r0",
             "libssl3@3.5.8-r0",
@@ -1048,7 +1045,7 @@
           "ID": "yaml@0.2.5-r2",
           "Name": "yaml",
           "Identifier": {
-            "PURL": "pkg:apk/alpine/yaml@0.2.5-r2?arch=x86_64\u0026distro=3.23.4",
+            "PURL": "pkg:apk/alpine/yaml@0.2.5-r2?arch=x86_64&distro=3.23.4",
             "UID": "8c9cef36f19b041b"
           },
           "Version": "0.2.5-r2",
@@ -1058,7 +1055,7 @@
           "Licenses": [
             "MIT"
           ],
-          "Maintainer": "Natanael Copa \u003cncopa@alpinelinux.org\u003e",
+          "Maintainer": "Natanael Copa <ncopa@alpinelinux.org>",
           "DependsOn": [
             "musl@1.2.5-r23"
           ],
@@ -1076,7 +1073,7 @@
           "ID": "zlib@1.3.2-r0",
           "Name": "zlib",
           "Identifier": {
-            "PURL": "pkg:apk/alpine/zlib@1.3.2-r0?arch=x86_64\u0026distro=3.23.4",
+            "PURL": "pkg:apk/alpine/zlib@1.3.2-r0?arch=x86_64&distro=3.23.4",
             "UID": "23a5a7d167a86311"
           },
           "Version": "1.3.2-r0",
@@ -1086,7 +1083,7 @@
           "Licenses": [
             "Zlib"
           ],
-          "Maintainer": "Natanael Copa \u003cncopa@alpinelinux.org\u003e",
+          "Maintainer": "Natanael Copa <ncopa@alpinelinux.org>",
           "DependsOn": [
             "musl@1.2.5-r23"
           ],
@@ -2862,7 +2859,7 @@
             "UID": "f7ddcf4b7880273a"
           },
           "InstalledVersion": "4.0.2",
-          "FixedVersion": "~\u003e 4.0.3.1, ~\u003e 4.0.4.1, ~\u003e 6.0.1.1, \u003e= 6.0.4",
+          "FixedVersion": "~> 4.0.3.1, ~> 4.0.4.1, ~> 6.0.1.1, >= 6.0.4",
           "Status": "fixed",
           "Layer": {
             "DiffID": "sha256:0f1f2c044176151c6fb5627b651bcc36a60e59edac7c7989901f20f72846f8ae"
@@ -2874,7 +2871,7 @@
             "Name": "Ruby Advisory Database",
             "URL": "https://github.com/rubysec/ruby-advisory-db"
           },
-          "Fingerprint": "sha256:4fa353960449149798a1934daa7c74ac19387da6ac59b87d2024607f4293acd2",
+          "Fingerprint": "sha256:3ab3fb0bf0a711bf6907a4b9321f13fbcb86c2a316dc027312c4269142b427f1",
           "Title": "erb: ERB: Arbitrary code execution via deserialization bypass",
           "Description": "ERB is a templating system for Ruby. Ruby 2.7.0 (before ERB 2.2.0 was published on rubygems.org) introduced an `@_init` instance variable guard in `ERB#result` and `ERB#run` to prevent code execution when an ERB object is reconstructed via `Marshal.load` (deserialization). However, three other public methods that also evaluate `@src` via `eval()` were not given the same guard: `ERB#def_method`, `ERB#def_module`, and `ERB#def_class`. An attacker who can trigger `Marshal.load` on untrusted data in a Ruby application that has `erb` loaded can use `ERB#def_module` (zero-arg, default parameters) as a code execution sink, bypassing the `@_init` protection entirely. ERB 4.0.3.1, 4.0.4.1, 6.0.1.1, and 6.0.4 patch the issue.",
           "Severity": "HIGH",
@@ -2944,7 +2941,9 @@
             "https://www.ruby-lang.org/en/news/2026/07/16/ruby-3-3-12-released"
           ],
           "PublishedDate": "2026-04-24T03:16:11.897Z",
-          "LastModifiedDate": "2026-08-24T13:18:33.597Z"
+          "LastModifiedDate": "2026-08-24T13:18:33.597Z",
+          "ShadowedByBundler": true,
+          "ShadowedDetail": "bundle exec loads erb 6.0.7 (Gemfile-pinned); the flagged 4.0.2 is a stale copy on disk, never loaded at runtime"
         },
         {
           "VulnerabilityID": "CVE-2026-80212",
@@ -2955,7 +2954,7 @@
             "UID": "b03a4a8512dcf59e"
           },
           "InstalledVersion": "0.2.3",
-          "FixedVersion": "~\u003e 0.3.2, \u003e= 0.7.2",
+          "FixedVersion": "~> 0.3.2, >= 0.7.2",
           "Status": "fixed",
           "Layer": {
             "DiffID": "sha256:0f1f2c044176151c6fb5627b651bcc36a60e59edac7c7989901f20f72846f8ae"
@@ -2967,7 +2966,7 @@
             "Name": "Ruby Advisory Database",
             "URL": "https://github.com/rubysec/ruby-advisory-db"
           },
-          "Fingerprint": "sha256:25121c1ac6b28125fc5ca49805ab20d54b73a18d3a0f8ce3cec697a49ea11730",
+          "Fingerprint": "sha256:c360c58edff61cfbbe43ee363da488bbd9eafff63a48679f5713dc722a058d53",
           "Title": "resolv: resolv gem: Denial of Service via uncontrolled memory growth from crafted DNS responses",
           "Description": "An issue was discovered in the resolv gem before 0.7.2 for Ruby. Resolv::DNS::Resource.get_class, Resolv::DNS::Resource::Generic.create, and Resolv::DNS::SvcParam::Generic.create generate a new class for each unknown DNS resource record (type, class) pair, or each unknown SvcParamKey, encountered while decoding a response. Each generated class was permanently registered both as a constant on Resource (or SvcParam::Generic) and as an entry in a class-lookup hash (ClassHash), and thus the class remained reachable through that constant after the response was discarded. Type and class are each 16-bit values, and thus an attacker controlling DNS responses (a spoofed response, or a malicious or hijacked upstream DNS server) has roughly 2^32 distinct (type, class) pairs to choose from. A single response of a few hundred kilobytes carrying tens of thousands of distinct unknown types permanently grows process memory by tens of megabytes; repeated responses accumulate without bound and are never reclaimed by garbage collection, because the constant keeps each class alive. Any code path that calls Resolv::DNS::Message.decode on attacker-influenced DNS responses is affected. resolv is a default gem, and thus this is reachable from a plain Ruby installation without any additional dependency.",
           "Severity": "HIGH",
@@ -3004,7 +3003,9 @@
             "https://www.ruby-lang.org/en/security"
           ],
           "PublishedDate": "2026-08-27T17:20:50.88Z",
-          "LastModifiedDate": "2026-09-09T16:04:24.933Z"
+          "LastModifiedDate": "2026-09-09T16:04:24.933Z",
+          "ShadowedByBundler": true,
+          "ShadowedDetail": "bundle exec loads resolv 0.8.0 (Gemfile-pinned); the flagged 0.2.3 is a stale copy on disk, never loaded at runtime"
         }
       ]
     }
