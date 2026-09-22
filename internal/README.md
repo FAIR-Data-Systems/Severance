@@ -4,22 +4,31 @@
 
 # Installing the Internal Component
 
-## Prerequisites
+**Read this first.** Internal is the only part of Severance that can actually see your triplestore.
+It NEVER listens on a network port and NEVER accepts a connection from outside -- it only ever reaches
+*out* to External and your triplestore. **DO NOT install Internal before you have External installed
+and working** -- see [Installing External](../external/README.md) first if you haven't already.
 
-1. A Virtuoso instance up and running, containing...
-2. Patient Registry data following the CARE-SM-2 model, loaded into a named graph (Virtuoso is one-instance-one-database, with no separate "repository" concept the way GraphDB has -- isolation between installs is via named graph, not a repository name)
-3. A Virtuoso user with read (`SPARQL_SELECT`) access to that data -- see the note on `TRIPLESTORE_USER`/`TRIPLESTORE_PASS` below on why this must be a real Digest-authenticated user, not an anonymous read
-4. An instance of Severence External running in your DMZ, and
-5. It's API URL must be visible from THIS SERVER to reach-out
+## What you need before you start
 
-## Configuration
+1. **A Virtuoso instance, up and running**, containing your data.
+2. **Patient Registry data following the CARE-SM-2 model**, loaded into a named graph. (Virtuoso is
+   one-instance-one-database, with no separate "repository" concept the way GraphDB has -- your
+   installs are isolated from each other by named graph, not by repository name.)
+3. **A Virtuoso user with read-only (`SPARQL_SELECT`) access to that data.** This CANNOT be an
+   anonymous account -- see the note on `TRIPLESTORE_USER`/`TRIPLESTORE_PASS` below for why.
+4. **An instance of Severance External already running**, in your DMZ.
+5. **A network path from this server to that External instance.** If this server cannot reach
+   External's API URL, nothing else in this guide will work.
 
-1. **Start with an empty folder**, and (as you, not as root) create a subfolder `./queries`
-2. Make a copy of the env_template file to and edit it 
-3. save it as `.env`
-4. create a docker-compose.yml as instructed below 
+## Step-by-step setup
 
-### env_template
+1. **Start with an empty folder.** As yourself, NOT as root, create a subfolder inside it called
+   `./queries`.
+2. **Copy `env_template` to `.env`** in that same folder, and edit it as described below.
+3. **Create a `docker-compose.yml`** as shown below.
+
+### Editing `.env`
 
     # must be the same key as the External component!
     ENCRYPTION_KEY_HEX=<generate with: openssl rand -hex 32>
@@ -33,43 +42,59 @@
     UID=1000   #  at terminal:   id -u
     GID=1000   # at terminal:  id -g
 
-The `ENCRYPTION_KEY_HEX` must be shared with the external componenet, since all results are encrypted
+- **`ENCRYPTION_KEY_HEX`** -- **must be the exact same value you set on External.** Generate it once
+  with `openssl rand -hex 32`, then copy it to both `.env` files. **DO NOT leave the placeholder text
+  in place** -- Internal refuses to start if you do.
+- **`RESULT_FORMAT`** -- must also match External's setting, exactly.
+- **`EXTERNAL_URL`** -- the real, reachable address of your External instance.
+- **`TRIPLESTORE_URL`/`TRIPLESTORE_USER`/`TRIPLESTORE_PASS`** -- read the warning below before you set
+  these.
+- **`UID`/`GID`** -- run `id -u` and `id -g` at your terminal and put the real numbers here. Do not
+  guess. See the warning below.
 
-**A note on `TRIPLESTORE_URL`/`TRIPLESTORE_USER`/`TRIPLESTORE_PASS`:** Virtuoso's plain `/sparql` endpoint serves the anonymous `nobody` account, which -- unless a deployment has deliberately locked it down (see `Sextans-Suite`'s `virtuoso-initdb/lockdown-anonymous-sparql.sql` for the pattern Sextans Fix/Sight both apply) -- can read every graph in the store with no credentials at all. Internal therefore talks to `/sparql-auth` by default whenever `TRIPLESTORE_USER`/`TRIPLESTORE_PASS` are set, using real HTTP Digest authentication (Virtuoso rejects Basic auth outright on its authenticated endpoints, 401 with no retry). If you leave the credentials unset, Internal falls back to an unauthenticated request against whatever URL you give it -- only appropriate for a triplestore/deployment that doesn't require auth for reads at all.
+**A warning about `TRIPLESTORE_URL`/`TRIPLESTORE_USER`/`TRIPLESTORE_PASS` -- read this, don't skip
+it.** Virtuoso's plain `/sparql` endpoint serves the anonymous `nobody` account, which -- unless a
+deployment has deliberately locked it down -- **can read every graph in the store with no credentials
+at all.** Internal will only use the safer, authenticated `/sparql-auth` endpoint if you set
+`TRIPLESTORE_USER`/`TRIPLESTORE_PASS`. If you leave those blank, Internal falls back to an
+**unauthenticated** request -- only acceptable if your triplestore genuinely doesn't require auth for
+reads. **When credentials are set, they must be a real Digest-authenticated account** -- Virtuoso
+rejects Basic auth outright on its authenticated endpoints.
 
-write this to `.env` after editing.  UID and GID ensure that you have access to modify the `./queries` folder.
+Once you've edited it, save it as `.env` in your folder. `UID`/`GID` are what let *you* modify the
+`./queries` folder later, not just the container.
 
-Test your access to the external URL by calling, e.g. `http://111.111.111.111:3000/severance`  You will either get a message or an "Unauthorized" response.  Any other kind of error means you cannot see the server from here.
+**Before going further, test that this server can actually reach External:** call, e.g.
+`http://111.111.111.111:3000/severance` from this machine. You should get either a plain message back,
+or an "Unauthorized" response -- both mean the connection works. **Any other kind of error means this
+server cannot see External, and nothing else in this guide will work until you fix that.**
 
-### docker-compose.yml
+### Creating `docker-compose.yml`
 
-For security, this container runs with the permissions of the user who you declare in the .env as the user who will be starting this container.
+**Three rules. Follow all three, or the container will not run correctly, if at all:**
 
-NEVER START IT AS ROOT!!  YOU HAVE BEEN WARNED!
+1. **NEVER start this container as root.** You have been warned.
+2. **`UID` and `GID` must be the real values for your user**, not a guess. Run `id -u` and `id -g` at
+   your terminal and use exactly what they print. The default of `1000`/`1000` is *usually* right on a
+   fresh Linux install, but don't assume it -- check.
+3. **DO NOT use `network_mode: host`.** Internal never listens on a port of its own, so it doesn't need
+   it, and it makes the container reachable in ways it shouldn't be.
 
-UID AND GID MUST BE CORRECT!  See instructions in the env_template and below for how to know that
-**You must get the permissions correct, or the container will not run properly, if at all.**  
+**Internal must be able to reach External and your triplestore**, exactly as you tested above.
 
-Take a moment and figure out your UID and GID!  It defaults to 1000/1000, which is the first non-root user that is created on a system... but that is just a very bad guess.  Take a moment and get it right!
+**The normal case -- Internal and External on separate servers (the expected "Severed" deployment
+topology):** you don't need to do anything extra. Ordinary Docker bridge networking already reaches any
+real IP address or domain name on your LAN or the internet -- this is standard outbound connectivity,
+unrelated to `network_mode: host`. Just set `EXTERNAL_URL`/`TRIPLESTORE_URL` to the real address of
+those servers.
 
-Internal must be able to "see" the External component and the triplestore, just as you
-did when you tested access in the last step -- but it doesn't need `network mode: host`
-to do that, since Internal never listens on a port of its own; it only ever makes
-outbound requests.
+**The one case that needs something extra -- testing with Internal and External on the *same*
+machine:** inside a container, `localhost` means the container itself, not your host machine. If
+you're running everything on one box for testing, point `EXTERNAL_URL`/`TRIPLESTORE_URL` at
+`host.docker.internal` instead of `localhost` -- the `extra_hosts` entry below makes that work.
 
-**The normal case -- Internal and External on separate servers (the expected,
-"Severed" deployment topology):** ordinary Docker bridge networking already reaches
-any real IP address or domain name on your LAN or the internet with no special
-configuration at all -- this is standard outbound NAT'd connectivity, unrelated to
-`network_mode: host`. Just set `EXTERNAL_URL`/`TRIPLESTORE_URL` to the real address
-of those servers (verified live: a plain bridge-networked container reaches both a
-real internet domain name and another host's IP directly, no extra config needed).
-
-**The one case that does need something extra -- testing with Internal and External
-on the *same* machine:** `localhost` inside a container means the container itself,
-not the host, so if you're running everything on one box for testing, point
-`EXTERNAL_URL`/`TRIPLESTORE_URL` at `host.docker.internal` instead of `localhost` --
-the `extra_hosts` entry below makes that resolve to the host.
+**Do not type the block below by hand** -- copy the real `docker-compose.yml` from the `internal/`
+folder of the repo. This is here so you know what to expect:
 
     services:
       internal:
@@ -93,21 +118,28 @@ the `extra_hosts` entry below makes that resolve to the host.
           - UID=${UID:-1000}   #the output of  id -u at the terminal, set in .env
           - GID=${GID:-1000}   #the output of  id -g at the terminal, set in .env
         user: "${UID:-1000}:${GID:-1000}"   # Run container as your host user, or 1000 fallback (which is usually the first non-root user created on a Linux system)  
-        
 
+### Start it
 
-### Start 
+**DO NOT start Internal until you have installed and tested External.** You'll need to run some tests
+on External that would be interrupted by Internal's own polling.
 
-**You should not start Internal until you have installed and tested External**.  You will need to do some testing on External that will be interrupted by the polling from Internal.
+Once External is confirmed working:
 
-`docker-compose up -d`
+    docker-compose up -d
 
+## Managing your queries
 
-## QUERIES
+Your `./queries` folder holds the queries Severance is allowed to run -- **nothing outside this folder
+can ever be queried.**
 
-In the `./queries` folder there are some examples of annotated queries that can be interpreted by Severance Internal.  If you modify these, your changes will be preserved from one compose-down/up to another.  If you need to fully reset, delete the content of the `./queries` folder and it will be re-populated with the example queries the next time you start.
+- On first start, this folder is populated with example queries.
+- **You CAN edit or add queries here** -- your changes survive a `compose down`/`compose up`.
+- **You CAN reset to the examples** -- delete everything in `./queries` and restart; it will be
+  re-populated.
+- **The folder is re-read every time Internal polls External** -- you can change queries here at any
+  time and they'll take effect on the next polling cycle, with no restart needed.
 
-We provide some [guidance for how to author these queries](./queries/README.md) so that they can be interpreted by Severance and used to build a sensible UI on the External side, and also to help them be more universally discoverable based on their Query Type.
-
-**Note:**  The ./queries folder content is re-read every time Internal polls External, so you can dynamically change the queries in that folder and it will update on the next polling cycle.
-
+See [the query-authoring guide](./sample_queries/README.md) for how to write a query so Severance (and
+the UI on the External side) can understand it correctly. (That guide lives next to the example queries
+themselves, which is also where your running `./queries` folder gets its starting content from.)

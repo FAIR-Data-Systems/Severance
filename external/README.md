@@ -4,19 +4,28 @@
 
 # Installing the External Component
 
-## Prerequisites
+**Read this first.** External is the *only* part of Severance that the outside world ever talks to.
+You CAN submit a pre-approved, named query and get an answer back. You CANNOT run arbitrary SPARQL --
+Severance will refuse anything that isn't a query the data provider has already installed on Internal.
+Keep that in mind while you read the rest of this file.
 
-1. docker compose
-2. A mechanism for generating an Auth token (or a pre-defined auth token)
+## What you need before you start
 
-## Configuration
+1. `docker compose` installed on your server.
+2. An Auth token. Generate one yourself, or use whatever mechanism you like to generate one -- Severance
+   doesn't care how you make it, only that you keep it secret afterward.
 
-1. create a new folder for your External server
-2. create a ./data and ./queries-metadata file (as your own user, NOT ROOT!)
-3. Copy the LATEST DOCKER COMPOSE FILE from the Severance ./external folder (this contains all patches)
-4. Open the env_template file, edit it, and save it as .env in the same folder as the docker-compose file
+## Step-by-step setup
 
-### env_template
+1. **Create a new, empty folder** for your External server.
+2. **Inside it, create a `./data` folder and a `./queries-metadata` folder.** Do this as yourself --
+   **DO NOT do this as root!**
+3. **Copy the latest `docker-compose.yml`** from the Severance repo's `./external` folder into your new
+   folder. **DO NOT write your own from scratch** -- the one in the repo already has every security
+   patch applied. Copy it fresh every time you update.
+4. **Copy `env_template` to `.env`** in that same folder, then edit `.env` as described below.
+
+### Editing `.env`
 
     ENCRYPTION_KEY_HEX=<generate with: openssl rand -hex 32>
     RESULT_FORMAT=csv                  # or "json"
@@ -27,14 +36,36 @@
     ALLOWED_INTERNAL_IPS=172.31.0.1,127.0.0.1,::1,192.168.1.100   # CHANGE 192.168.1.100 to the IP of Internal 
     METADATA_DIR=/queries-metadata  # Don't change this unless you know what you're doing
 
-`ALLOWED_INTERNAL_IPS` is a whitelist of addresses that are allowed to access the portions of the API that do not require authentication.  Each comma-separated entry may be a bare IP (`192.168.1.100`), a CIDR range (`192.168.1.0/24`), or the literal keyword `localhost`.  It should be VERY restrictive - maybe including localhost/127.0.0.1 only during testing
+- **`ENCRYPTION_KEY_HEX`** -- generate your own with `openssl rand -hex 32`. **DO NOT leave the
+  placeholder text in place** -- both External and Internal refuse to start if you do. This exact same
+  key **must** also be set on Internal, or nothing will decrypt correctly.
+- **`AUTH_TOKEN`** -- your callers' shared secret. Anyone who has it can call your service. See the
+  warning below for what this does and does not protect against.
+- **`ALLOWED_INTERNAL_IPS`** -- a whitelist of addresses allowed to reach the parts of the API that
+  don't require an Auth token (this is how Internal talks to External). Each entry can be a bare IP
+  (`192.168.1.100`), a CIDR range (`192.168.1.0/24`), or the word `localhost`. **Keep this list as short
+  as possible.** During testing you can include `localhost`/`127.0.0.1`; in production it should
+  contain only Internal's real address.
+- **Everything marked "DO NOT CHANGE"** -- leave it alone unless you have read the code and know exactly
+  what you're doing.
 
-The `ENCRYPTION_KEY_HEX` must be shared with the external componenet, since all results are encrypted
+**What `AUTH_TOKEN` actually protects against -- read this, don't assume.** `AUTH_TOKEN` is a static,
+unsigned secret. **Anyone who ever obtains it can replay it indefinitely, from anywhere** -- a leaked
+`.env` file, a compromised client machine, or a value exposed in a browser's own Network tab if a
+client handles it there. External has no way to tell a legitimate call from a replayed one. Treat
+`AUTH_TOKEN` as a basic filter against casual or accidental access -- **not** as proof of who is really
+calling.
 
-**A note on what `AUTH_TOKEN` actually protects against:** it's a static, unsigned bearer value - anyone who ever obtains it (a leaked `.env`, a compromised client machine, a value exposed client-side, e.g. in a browser's own Network tab if a client handles it there) can replay it indefinitely, from anywhere, with no way for External to tell a legitimate client from a replay. Treat it as a basic filter against casual/accidental access, not as proof of *who* is really calling. What actually bounds the damage from a stolen token is Severance's named-query design: a stolen `AUTH_TOKEN` only ever lets someone submit one of the queries you've already pre-approved and installed on Internal, with attacker-chosen values for that query's own variables - never arbitrary SPARQL, never the query text itself. Choose what queries you install accordingly, and rotate `AUTH_TOKEN` if you ever suspect it's been exposed.
+What actually limits the damage if a token leaks is Severance's named-query design: a stolen
+`AUTH_TOKEN` only ever lets someone submit one of the queries **you have already pre-approved and
+installed on Internal**, with attacker-chosen values for that query's own variables. It CANNOT be used
+to run arbitrary SPARQL, and it CANNOT reveal the query text itself. Choose what queries you install
+with that in mind, and rotate `AUTH_TOKEN` immediately if you ever suspect it has been exposed.
 
+### The `docker-compose.yml` you copied looks like this
 
-### docker-compose
+(Do not type this by hand -- this is here so you know what to expect. Copy the real file, per step 3
+above.)
 
     services:
         external:
@@ -65,94 +96,104 @@ The `ENCRYPTION_KEY_HEX` must be shared with the external componenet, since all 
                 - RACK_ENV=production
                 - APP_ENV=production     # both for redundancy
 
-### Start 
+### Start it
 
-`docker-compose up -d` and look for errors...
+Run:
 
-### Testing
+    docker-compose up -d
 
-#### alive?
-`curl -v -H "Authorization: Bearer YesItsMe" http://localhost:3000/severance`
+Then look for errors. If you see any, stop and fix them before continuing -- do not move on to
+installing Internal with a broken External.
 
-if you see an error, there is a problem!  Check what kind of error, and make sure that the auth key is what you expect as set in the `.env` file
+## Test that it's working
 
+**Do these tests in order.** Do not skip ahead.
 
-#### Any known queries?
-`curl -X GET http://localhost:3000/severance/available_queries   -H "Authorization: Bearer YesItsMe"   -H "Accept: application/json"`
+### 1. Is it alive?
 
-returns a JSON list of every query the Internal component has installed -- see the
-[`/severance/available_queries`](#severanceavailable_queries) section further down for the full
-response shape and what each field means.
+    curl -v -H "Authorization: Bearer YesItsMe" http://localhost:3000/severance
 
-#### Submit a query request
+If you see an error here, **stop -- something is wrong.** Check the error message, and check that the
+Auth token you used matches `AUTH_TOKEN` in your `.env` file exactly.
 
-```
-curl -v -X POST http://localhost:3000/severance/queries   -H "Content-Type: application/json"   -H "Authorization: Bearer YesItsMe"   -d '{
-    "query_id": "count",
-    "bindings": {
-      "orphacode": "http://www.orpha.net/ORDO/Orphanet_730"
-    }
-  }'
-```
+### 2. Does it know about any queries yet?
 
-*response:*
+    curl -X GET http://localhost:3000/severance/available_queries -H "Authorization: Bearer YesItsMe" -H "Accept: application/json"
 
-```
-HTTP/1.1 201 Created
-Location:  http://localhost:3000/severance/jobs/ABC123
-...
-...
-```
+This returns a JSON list of every query Internal has installed. See the
+[`/severance/available_queries`](#severanceavailable_queries) section further down for exactly what
+each field in that response means. **If this list is empty, that's expected right now** -- you haven't
+started Internal yet, so it hasn't told External about any queries. Keep going.
 
-#### Check submitted query status
+### 3. Submit a query request
 
-`curl -X GET http://localhost:3000/severance/jobs/ABC123   -H "Authorization: Bearer YesItsMe"   -H "Accept: application/json"`
+    curl -v -X POST http://localhost:3000/severance/queries -H "Content-Type: application/json" -H "Authorization: Bearer YesItsMe" -d '{
+        "query_id": "count",
+        "bindings": {
+          "orphacode": "http://www.orpha.net/ORDO/Orphanet_730"
+        }
+      }'
 
-*response:*
+You should get back:
 
-```
-...
-HTTP/1.1 201 Created...
-Location:  http://localhost:3000/severance/jobs/ABC123
-retry-after: 10
-...
-{"status": "processing"}
-```
+    HTTP/1.1 201 Created
+    Location:  http://localhost:3000/severance/jobs/ABC123
+    ...
+    ...
 
-##  NOW START INTERNAL
+### 4. Check the status of what you just submitted
 
-The internal component will immediately ask the External component if it has any queries.
+    curl -X GET http://localhost:3000/severance/jobs/ABC123 -H "Authorization: Bearer YesItsMe" -H "Accept: application/json"
 
-Your query just submitted will be picked-up and answered (assuming that Internal is functional!)
+Right now, with Internal not yet running, you should get:
 
-#### Check submitted query status
+    ...
+    HTTP/1.1 201 Created...
+    Location:  http://localhost:3000/severance/jobs/ABC123
+    retry-after: 10
+    ...
+    {"status": "processing"}
 
-`curl -X GET http://localhost:3000/severance/jobs/ABC123   -H "Authorization: Bearer YesItsMe"   -H "Accept: application/json"`
+**This is expected and correct.** Your request is queued and waiting. It will sit there safely -- no
+data is lost -- until Internal comes online and picks it up.
 
-*response:*
+## Now install and start Internal
 
-```
-HTTP/1.1 200 OK
-Content-type:  text/csv
-...
-...
-count
-123
-```
+See [Installing Internal](../internal/README.md).
 
+The moment Internal starts, it will ask External if it has any queries waiting. Your request from step
+3 above will be picked up and answered automatically -- **you do not need to resubmit it.**
 
-# API
+### 5. Check the status again, once Internal is running
 
-## /severance/available_queries
+    curl -X GET http://localhost:3000/severance/jobs/ABC123 -H "Authorization: Bearer YesItsMe" -H "Accept: application/json"
 
-Retrieves a JSON list of named queries that are available from the Internal component
+Now you should get:
 
-**request**
+    HTTP/1.1 200 OK
+    Content-type:  text/csv
+    ...
+    ...
+    count
+    123
 
-`curl -X GET http://localhost:3000/severance/available_queries   -H "Authorization: Bearer YesItsMe"   -H "Accept: application/json"`
+If you see this, **your installation works end to end.** If you still see `"status": "processing"`
+after a reasonable wait, check that Internal actually started without errors and can reach both
+External and your triplestore -- see [Installing Internal](../internal/README.md).
 
+# API reference
 
-**response**
+## `/severance/available_queries`
+
+**What it does:** returns a JSON list of every named query Internal has installed and made available.
+This is how you find out what you're allowed to ask for -- you CANNOT submit a query that isn't in
+this list.
+
+**Request:**
+
+    curl -X GET http://localhost:3000/severance/available_queries -H "Authorization: Bearer YesItsMe" -H "Accept: application/json"
+
+**Response:**
 ```
 [
     "query_id": "count",
@@ -175,13 +216,15 @@ Retrieves a JSON list of named queries that are available from the Internal comp
 ]
 ```
 
-This response shows the key components that you need to construct a query request:
-1)  The query identifier
-2)  The query variables
-3)  What type of data is allowed for each variable
-4)  An example (there's no guarantee that the example will result in a match - it is informative only!)
+This response tells you everything you need to build a query request:
 
-From this, a valid query binding would be(using the exemplar value):
+1. **The query identifier** (`query_id`) -- the name you must use, exactly.
+2. **The query's variables** -- what you're allowed to fill in.
+3. **The type of data each variable expects.**
+4. **An example value.** This is for illustration only -- **there is no guarantee it will match any
+   real data.**
+
+Using the example above, a valid request body would be:
 
 ```
 {
@@ -191,23 +234,30 @@ From this, a valid query binding would be(using the exemplar value):
     }
 }
 ```
-note that URLs are submitted as strings, without any "<...>"
 
+**Note:** submit URLs as plain strings. **DO NOT wrap them in `<...>` angle brackets.**
 
-## /severance/queries
+## `/severance/queries`
 
-POST a valid query binding to this endpoint to add it to the query queue.
+**What it does:** submits a query request and adds it to the queue.
 
-Example:
+**You CAN** submit any `query_id` that appears in `available_queries`, with values for exactly the
+variables it declares.
+
+**You CANNOT** submit a `query_id` that Internal hasn't installed, and you CANNOT add or invent new
+variables -- either will be rejected.
+
+**Request:**
 ```
-curl -v -X POST http://localhost:3000/severance/queries   -H "Content-Type: application/json" \
-  -H "Authorization: Bearer YesItsMe"   -d '{ \
+curl -v -X POST http://localhost:3000/severance/queries -H "Content-Type: application/json" \
+  -H "Authorization: Bearer YesItsMe" -d '{ \
     "query_id": "count", \
     "bindings": { \
       "orphacode": "http://www.orpha.net/ORDO/Orphanet_730" \
     } \
   }'
-
 ```
 
-the Location header of the response tells you the addess you should poll to get your answer.  The frequency with which the query queue is accessed is entirely up to the service provider - minutes, days, or longer.  
+The response's `Location` header tells you the exact address to poll for your answer (see step 4
+above). **How often the queue is actually checked is entirely up to whoever runs Internal** -- it could
+be seconds, minutes, or much longer. Don't assume an instant answer.
