@@ -4,6 +4,20 @@ All notable changes to this project are documented here. Format loosely follows 
 
 ## [Unreleased]
 
+### Fixed
+
+- `external/outie.rb`'s `before` filter matched `/severance/jobs/` as a path *prefix* for its
+  internal-IP-only branch, which also caught the caller-facing `GET /severance/jobs/:uuid` (polling for
+  a result) and `GET /severance/available_queries` -- not just Innie's own
+  `POST /severance/jobs/:uuid/result`. An external caller with a valid `AUTH_TOKEN` could never poll for
+  its own result or list queries; it got a 403 unless it also happened to be on an allowlisted IP,
+  contradicting `external/README.md`'s own documented curl examples. Now only
+  `GET /severance/queue/pull` and `POST /severance/jobs/:uuid/result` (Innie's own routes) are
+  IP-restricted; `GET /severance/jobs/:uuid` and `GET /severance/available_queries` are Bearer-checked
+  like every other caller-facing route. Covered by a new standalone check,
+  `external/check_before_filter.rb` (uses `Rack::MockRequest`, already available transitively via
+  `sinatra`/`rackup` -- no new gem added to `external/`, which carries no test framework by design).
+
 ### Changed
 
 - `ALLOWED_INTERNAL_IPS` entries may now be a CIDR range (e.g. `192.168.1.0/24`) in addition to a bare IP or the `localhost` keyword. A malformed entry is skipped (logged) rather than rejecting every request. Closes #5.

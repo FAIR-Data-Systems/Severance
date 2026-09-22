@@ -199,14 +199,22 @@ end
 
 # Security filter applied to every request.
 #
-# - Internal endpoints (`/severance/queue/pull`, `/severance/jobs/*`, `/severance/available_queries`)
-#   are only accessible from whitelisted IPs (default: localhost). Each
-#   ALLOWED_INTERNAL_IPS entry may be a bare IP or a CIDR range.
-# - All other (user-facing) endpoints require a valid `Bearer` token if `AUTH_TOKEN` is set.
+# - Internal endpoints, used only by Innie itself (`GET /severance/queue/pull` to pull the next job,
+#   `POST /severance/jobs/:uuid/result` to push a finished one back) are only accessible from
+#   whitelisted IPs (default: localhost). Each ALLOWED_INTERNAL_IPS entry may be a bare IP or a CIDR
+#   range.
+# - Every other endpoint, including the caller-facing `GET /severance/jobs/:uuid` (polling for a
+#   result) and `GET /severance/available_queries` (the query catalogue), requires a valid `Bearer`
+#   token if `AUTH_TOKEN` is set -- exactly as documented in external/README.md's own curl examples.
+#   NOTE: an earlier version of this filter matched `/severance/jobs/` as a path *prefix*, which also
+#   caught the caller-facing GET route and made it unreachable for any external Bearer-authenticated
+#   caller (403 unless that caller also happened to be on an allowlisted IP) -- fixed here by matching
+#   Innie's own two routes exactly instead of the shared prefix.
 before do
   # === Internal calls from Innie (no auth required) ===
-  internal_paths = ['/severance/queue/pull', '/severance/jobs/', '/severance/available_queries']
-  if internal_paths.any? { |p| request.path_info.start_with?(p) }
+  internal_paths = ['/severance/queue/pull']
+  is_internal_result_push = request.request_method == 'POST' && request.path_info =~ %r{\A/severance/jobs/[^/]+/result\z}
+  if internal_paths.any? { |p| request.path_info == p } || is_internal_result_push
     allowed_entries = (ENV['ALLOWED_INTERNAL_IPS'] || '127.0.0.1,::1,localhost').split(',').map(&:strip)
     client_ip = request.ip
     is_allowed = allowed_entries.any? { |entry| internal_ip_allowed?(entry, client_ip) }
