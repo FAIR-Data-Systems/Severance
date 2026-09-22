@@ -18,10 +18,29 @@ All notable changes to this project are documented here. Format loosely follows 
   `GET /severance/jobs/:uuid` and `GET /severance/available_queries` at all. See
   `facades/shallot-facade/README.md`. **Verified end to end** against a real Severance External +
   Internal + Virtuoso instance, using FLAIR-GG's actual `IUCN_categories.rq` and `species_location.rq`
-  unchanged -- see the three "Fixed" entries below, all found only by that run.
+  unchanged -- see the three "Fixed" entries below, all found only by that run. Also has its own
+  hardened `docker-compose.yml` (same pattern as `external/`/`internal/`) and a **verified real Docker
+  build** -- see the two more "Fixed" entries below that build surfaced.
 
 ### Fixed
 
+- `facades/shallot-facade/Dockerfile`'s runtime stage never copied `Gemfile`/`Gemfile.lock`, only the
+  already-vendored gems -- `bundle exec` needs the Gemfile itself present to resolve/activate them.
+  Every container exited immediately with "Could not locate Gemfile". Found by actually building and
+  running the image for the first time (while adding `docker-compose.yml`); the same bug was found and
+  fixed identically in `Beacon2/facade`'s Dockerfile (a separate repo, this facade's sibling project),
+  which had the identical omission and had also never actually been run before.
+- `facades/shallot-facade/lib/severance_client.rb#available_queries` only wrapped HTTP-status failures
+  into `CatalogueFetchFailed`, not connection-level ones (`Errno::ECONNREFUSED`/`SocketError`/
+  `Timeout::Error`). `QueryCatalogue#refresh`'s single rescue clause never caught those, so `GET /` and
+  `GET /openapi.json` leaked a full stack trace (file paths, gem versions) to the caller whenever
+  Severance was unreachable -- confirmed live with `RACK_ENV=production` set. `show_exceptions
+  :after_handler` renders Sinatra's detailed exception page for any uncaught exception in every
+  environment; this is the exact class of bug the earlier Severance pentest found and fixed in
+  `external/outie.rb`. Now wrapped the same way; a generic `error StandardError` handler added as a
+  backstop against the same mistake in any future route (also added, as defense in depth, to
+  `Beacon2/facade/app.rb`, where it isn't currently reachable but the identical `show_exceptions`
+  setting exists).
 - `external/outie.rb`'s `before` filter also matched `POST /severance/available_queries` (Innie pushing
   its query catalogue on startup) as a Bearer-gated caller-facing route, after the fix below split its
   `GET` counterpart out from the internal-IP-only branch. `innie.rb` never sends a Bearer token for this
