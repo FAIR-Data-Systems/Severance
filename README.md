@@ -21,15 +21,23 @@ startup). Maintaining/releasing this project? See [`RELEASING.md`](RELEASING.md)
 * [Installing External](./external/README.md)
 * [Installing Internal](./internal/README.md)
 
+Both must be running for the system to actually answer anything! Deploy only External and it will
+queue requests forever without ever returning a result -- it never talks to the triplestore itself,
+only Internal does.
+
 ## Using Severance from another application (Facades)
 
-A caller that needs Severance's query results in some other API shape (GA4GH Beacon v2, a
-Shallot/GRLC-shaped service, or anything else) doesn't talk to External directly -- it goes through a
+A caller that needs Severance's query results in some other Interface (REDCap, GA4GH Beacon v2, a Shallot/GRLC-shaped service, or anything else) doesn't talk to External directly -- it goes through a
 **facade**: a thin translation layer that speaks the external API on one side and only ever calls
 External's own public API (`available_queries`, `queries`, `jobs/:uuid`) on the other. Facades live in
 their own repo, [`FAIR-Data-Systems/Severance-Facades`](https://github.com/FAIR-Data-Systems/Severance-Facades)
 -- see that repo's README for the two existing examples (`shallot-facade`, `beacon-facade`) and a
-"How to implement a new facade" guide if you're building another one.
+"How to implement a new facade" guide if you're building another one.  Note that EURO-NMD have implemented their own "facade" for REDCap, and can provide advice on how to do that.
+
+**Building or installing a facade does NOT give you access to any data!** A facade only provides an
+interface to queries the data provider has already approved and registered in Severance Internal. If
+the query you need doesn't exist there yet, you must negotiate with the data provider to get it added
+-- no facade, however cleverly built, can get you data through a query that was never registered.
 
 ## How it works: the security model
 
@@ -40,7 +48,7 @@ their own repo, [`FAIR-Data-Systems/Severance-Facades`](https://github.com/FAIR-
 **Interoperability and Security Features:**
 
 1. Requires an authorization token (from whatever mechanism you wish).
-2. Queries are named and pre-approved, not arbitrary.
+2. Queries are named and pre-approved, not arbitrary -- **you cannot run arbitrary SPARQL through Severance, ever, no matter what token or facade you have.**
 3. The query itself is never passed -- it exists only in the internal component, referred to by name.
 4. Follows web standards for queued processes.
 5. External and Internal components are fully independent (containers); Internal can be switched off and External will continue to queue (no lost requests).
