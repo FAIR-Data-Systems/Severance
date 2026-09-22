@@ -1,0 +1,25 @@
+services:
+  shallot-facade:
+    image: {SFAC}
+    restart: always
+    security_opt:
+      - "no-new-privileges:true"
+    cap_drop:
+      - ALL
+    # No cap_add needed, unlike external/docker-compose.yml -- this Dockerfile never runs as root at
+    # all (no chown-then-gosu step: no volumes are mounted, so there's nothing to chown), it starts
+    # directly as the non-root `shallotfacade` user baked into the image.
+    mem_limit: 512m
+    cpus: 1
+    ports:
+      - "${SHALLOT_FACADE_PORT:-4567}:${SHALLOT_FACADE_PORT:-4567}"
+    env_file:
+      - .env
+    environment:
+      - RACK_ENV=production
+      - APP_ENV=production     # both for redundancy, matching external/docker-compose.yml
+    # Lets SHALLOT_FACADE_SEVERANCE_URL point at host.docker.internal for same-host testing against a
+    # Severance External that isn't itself dockerized on this same compose network -- matching
+    # internal/docker-compose.yml's identical convention and rationale.
+    extra_hosts:
+      - "host.docker.internal:host-gateway"

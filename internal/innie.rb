@@ -2,6 +2,7 @@
 # frozen_string_literal: true
 
 require 'net/http'
+require 'net/http/digest_auth'
 require 'json'
 require 'fileutils'
 require_relative 'annotation_parser'
@@ -34,9 +35,27 @@ RESULT_FORMAT = result == 'csv' ? 'csv' : 'json'
 # Accept header sent to the triplestore
 ACCEPT_HEADER = RESULT_FORMAT == 'csv' ? 'text/csv' : 'application/sparql-results+json'
 
-# AES-256-GCM encryption key derived from hex environment variable
-ENCRYPTION_KEY = [ENV.fetch('ENCRYPTION_KEY_HEX',
-                            '0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef')]&.pack('H*')
+# AES-256-GCM encryption key derived from hex environment variable.
+#
+# Previously fell back to a fixed, literal default (published in this
+# repo's own env_template/README as the example value) whenever
+# ENCRYPTION_KEY_HEX wasn't set -- silently "encrypting" every result with
+# a key anyone can read in this project's own source. Refusing to start is
+# the fail-closed behavior used everywhere else in this file for exactly
+# this class of mistake (see InvalidIriError/InvalidEncodingError). Kept in
+# sync with the identical check in external/outie.rb.
+EXAMPLE_ENCRYPTION_KEY_HEX = '0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef'
+raw_encryption_key_hex = ENV['ENCRYPTION_KEY_HEX']&.strip
+if raw_encryption_key_hex.nil? || raw_encryption_key_hex.empty?
+  abort 'FATAL: ENCRYPTION_KEY_HEX is not set. Generate one with `openssl rand -hex 32` ' \
+        'and set it identically on both External and Internal -- refusing to start with no key ' \
+        'rather than silently falling back to a known, public default.'
+elsif raw_encryption_key_hex == EXAMPLE_ENCRYPTION_KEY_HEX
+  abort 'FATAL: ENCRYPTION_KEY_HEX is still the example value from env_template/README.md. ' \
+        'Generate a real one with `openssl rand -hex 32` -- refusing to start with a key ' \
+        'anyone can read in this project\'s own source.'
+end
+ENCRYPTION_KEY = [raw_encryption_key_hex].pack('H*')
 
 # ============== AES-256-GCM helpers ==============
 
@@ -208,13 +227,23 @@ def substitute_grlc_bindings(query, bindings, variable_types = {})
                     end
     warn "Escaped value for #{k}: #{escaped_value}"
 
-    # Match both ?_key_type and ?__key_type
-    pattern = /(?:\?__|\?_)#{Regexp.escape(k.to_s)}_[\w:]+/i
-    query.gsub!(pattern) do |_match|
-      escaped_value
-    end
+    # Match ?_key_type / ?__key_type (the type suffix that drives extract_parameters'
+    # variable_types) AND the bare ?_key / ?__key form with no suffix at all -- GRLC's own dialect for
+    # a parameter declared only via a `#+ parameters:` block (name/type/required/default), which
+    # extract_parameters can't infer a type from inline (see annotation_parser.rb's
+    # fold_parameters_block!). A required end-of-name boundary (\b) stops "speciesname" from also
+    # matching a longer variable like "speciesname2". Missed on the first #+ parameters: fix --
+    # caught only by a real end-to-end run against FLAIR-GG's species_location.rq, whose
+    # `?_speciesname` placeholder has no type suffix: it was silently left unreplaced in the query
+    # sent to the triplestore, an unbound variable, always zero rows, no error anywhere in the chain.
+    pattern = /(?:\?__|\?_)#{Regexp.escape(k.to_s)}(?:_[\w:]+)?\b/i
+    substituted = !query.gsub!(pattern) { escaped_value }.nil?
 
-    warn "→ Substituted ?_#{k}_* → #{escaped_value}"
+    if substituted
+      warn "→ Substituted ?_#{k}_* → #{escaped_value}"
+    else
+      warn "⚠ No ?_#{k}[_type] placeholder found in the query for binding '#{k}' -- nothing substituted"
+    end
   end
   query
 end
@@ -241,6 +270,77 @@ end
 # @return [Boolean] Currently always returns true
 def validate_query(_query)
   true # ← stub – replace with real validation later
+end
+
+# Executes `query` against the triplestore at `uri`, using real HTTP Digest
+# authentication when `user`/`pass` are provided.
+#
+# Virtuoso's SPARQL endpoints require actual Digest auth and reject Basic
+# auth outright (401, no retry) -- confirmed live against a Virtuoso 07.20
+# instance during Sextans Fix's own GraphDB -> Virtuoso migration (see
+# Sextans-Suite's `Daemon/http_utils.rb`, `HTTPUtils.post_digest`, whose
+# probe-then-authenticate approach this mirrors). This also switches to a
+# form-encoded `query=` POST rather than this method's previous
+# `application/sparql-query` content type, matching Fix's own proven-working
+# read pattern against Virtuoso's Digest-protected `/sparql-auth` endpoint
+# (`data_graphs_under` in `Daemon/transform-cdev2.rb`) rather than assuming
+# the SPARQL 1.1 Protocol content type is accepted the same way there.
+#
+# Falls back to a plain, unauthenticated `application/sparql-query` POST
+# (this method's original behavior, for triplestores/deployments that don't
+# require auth for reads at all) when no credentials are configured.
+#
+# @return [Net::HTTPResponse]
+def execute_sparql_query(uri, query, accept_header, user, pass)
+  unless user && pass
+    warn 'Warning: TRIPLESTORE_USER or TRIPLESTORE_PASS not set - running without authentication'
+    req = Net::HTTP::Post.new(uri)
+    req['Accept'] = accept_header
+    req['Content-Type'] = 'application/sparql-query'
+    req.body = query
+    return Net::HTTP.start(uri.hostname, uri.port, use_ssl: uri.scheme == 'https') { |http| http.request(req) }
+  end
+
+  warn "Using Digest Auth for user: #{user}"
+  http = Net::HTTP.new(uri.hostname, uri.port)
+  http.use_ssl = (uri.scheme == 'https')
+
+  # Probe with an empty body to get the WWW-Authenticate challenge --
+  # Virtuoso rejects the unauthenticated request and stops reading as soon
+  # as it sees the headers, so sending the real body on this first request
+  # risks an ECONNRESET instead of the expected 401 for a large payload
+  # (see http_utils.rb's own note on this); matched here for consistency
+  # even though a query string is rarely large enough to trigger it.
+  challenge_req = Net::HTTP::Post.new(uri)
+  challenge_req['Accept'] = accept_header
+  challenge_req['Content-Type'] = 'application/x-www-form-urlencoded'
+  challenge_req.body = ''
+  challenge = http.request(challenge_req)
+  # A 401 with no (or blank) WWW-Authenticate header -- a misconfigured
+  # TRIPLESTORE_URL pointing at something that isn't Digest-protected, a
+  # proxy/load-balancer's own error page, a firewall block page, etc. --
+  # crashes `Net::HTTP::DigestAuth#auth_header` with an uncaught
+  # NoMethodError (`nil.gsub`) if passed through unchecked. Since Innie's
+  # main loop has no supervisor around this call, that would kill the
+  # entire process the same way the encoding and path-traversal crashes
+  # did; returning the raw challenge here instead lets the caller's normal
+  # non-success handling (see the `unless res.is_a?(Net::HTTPSuccess)`
+  # check below) reject the job safely.
+  challenge_header = challenge['www-authenticate']
+  return challenge unless challenge.code == '401' && challenge_header && !challenge_header.empty?
+
+  digest_auth = Net::HTTP::DigestAuth.new
+  uri_with_creds = uri.dup
+  uri_with_creds.user = user
+  uri_with_creds.password = pass
+  auth_header = digest_auth.auth_header(uri_with_creds, challenge_header, 'POST')
+
+  req = Net::HTTP::Post.new(uri)
+  req['Accept'] = accept_header
+  req['Content-Type'] = 'application/x-www-form-urlencoded'
+  req['Authorization'] = auth_header
+  req.body = "query=#{URI.encode_www_form_component(query)}"
+  http.request(req)
 end
 
 def process_queries
@@ -270,6 +370,7 @@ def process_queries
       'tags' => metadata['tags'],
       'variables' => metadata['variables'],
       'variable_types' => metadata['variable_types'],
+      'required' => metadata['required'],
       'examples' => bindings,
       'pagination' => metadata['pagination'],
       'method' => metadata['method'],
@@ -312,9 +413,13 @@ end
 # ============================ MAIN LOOP =================================
 # ========================================================================
 
-# Main polling loop: continuously pull jobs from the external service,
-# execute them against the triplestore, and push results back.
-loop do
+# Guarded so this file can be `require_relative`d (e.g. from a spec) to exercise its method
+# definitions without entering an infinite polling loop -- true both when run normally
+# (`ruby innie.rb`, and the Docker entrypoint's `exec ruby innie.rb`) and when required.
+if __FILE__ == $PROGRAM_NAME
+  # Main polling loop: continuously pull jobs from the external service,
+  # execute them against the triplestore, and push results back.
+  loop do
   # On startup: Push all query metadata to the external service (Outie)
   # so the UI can list available queries and later request them by ID.
   all_queries = process_queries
@@ -400,24 +505,48 @@ loop do
   uri = URI(TRIPLESTORE_URL)
   warn "SPARQL endpoint: #{uri.inspect}"
 
-  req = Net::HTTP::Post.new(uri)
-  req['Accept'] = ACCEPT_HEADER
-  req['Content-Type'] = 'application/sparql-query'
-  req.body = query
-
-  # Add Basic Authentication if credentials are provided
-  if ENV['TRIPLESTORE_USER'] && ENV['TRIPLESTORE_PASS']
-    req.basic_auth(ENV['TRIPLESTORE_USER'], ENV['TRIPLESTORE_PASS'])
-    warn "Using Basic Auth for user: #{ENV['TRIPLESTORE_USER']}"
-  else
-    warn 'Warning: TRIPLESTORE_USER or TRIPLESTORE_PASS not set - running without authentication'
-  end
-
-  res = Net::HTTP.start(uri.hostname, uri.port, use_ssl: uri.scheme == 'https') do |http|
-    http.request(req)
+  # A network-level failure to even reach the triplestore (connection
+  # refused, DNS failure, timeout -- an ordinary operational condition, not
+  # an attack: a restart, a network blip, a firewall change) raises here
+  # uncaught by anything, same as any other exception in this loop with no
+  # supervisor around it. The analogous call two sections up (polling
+  # External for the next job) already handles this with a
+  # rescue/log/sleep/next pattern; this call never got the same treatment.
+  begin
+    res = execute_sparql_query(uri, query, ACCEPT_HEADER, ENV['TRIPLESTORE_USER'], ENV['TRIPLESTORE_PASS'])
+  rescue StandardError => e
+    warn "⚠ Failed to reach triplestore for job #{uuid}: #{e.class} - #{e.message}"
+    begin
+      push_result(uuid, empty_result_body)
+    rescue StandardError => push_error
+      warn "⚠ Failed to push failure result for job #{uuid}: #{push_error.class} - #{push_error.message}"
+    end
+    sleep POLL_INTERVAL
+    next
   end
 
   warn "SPARQL SERVER: HTTP result status: #{res.code}"
+
+  # A non-success response (401 from a bad/rotated triplestore credential,
+  # 500 from the triplestore itself, etc.) was previously encrypted and
+  # pushed back to the caller exactly like a real result -- the caller had
+  # no way to tell an auth/server failure from a genuine zero-row answer,
+  # and the triplestore's own error page (which can carry internal details)
+  # would have been pushed back verbatim. Digest auth's extra
+  # challenge/response round trip (see execute_sparql_query) makes this a
+  # more live failure mode than the old single-request Basic-auth call, so
+  # it's handled explicitly now: reject the same safe way an invalid
+  # IRI/encoding is rejected, rather than masquerading a failure as data.
+  unless res.is_a?(Net::HTTPSuccess)
+    warn "⚠ Triplestore query failed for job #{uuid}: HTTP #{res.code} #{res.message}"
+    begin
+      push_result(uuid, empty_result_body)
+    rescue StandardError => push_error
+      warn "⚠ Failed to push failure result for job #{uuid}: #{push_error.class} - #{push_error.message}"
+    end
+    sleep POLL_INTERVAL
+    next
+  end
 
   # ====================== SECURE RESULT HANDLING ======================
   begin
@@ -462,4 +591,5 @@ loop do
     warn "⚠ Failed to push results for job #{uuid}: #{e.class} - #{e.message}"
   end
   sleep POLL_INTERVAL
+  end
 end

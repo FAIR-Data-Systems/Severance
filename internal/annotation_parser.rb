@@ -32,6 +32,16 @@ module QueryAnnotationParser
     # @option return [Hash] 'enumerate'           Enumeration lists for parameters
     # @option return [Array<String>] 'variables'  Detected query parameters
     # @option return [Hash] 'variable_types'      Parameter name → normalized type
+    # @option return [Array<String>] 'required'   Names of parameters marked `required: true` in a
+    #   `#+ parameters:` block
+    # @option return [Array<Hash>] 'parameters'   Raw `#+ parameters:` block entries, one hash per
+    #   parameter (`name`, `type`, `description`, `required`, `default`, whichever were given) --
+    #   this is GRLC's own dialect for declaring a parameter that has no type-suffixed inline
+    #   placeholder (`?_name` rather than `?_name_type`), as used by e.g. FLAIR-GG's
+    #   `species_location.rq`. Every parameter found here is folded into `variables`/`variable_types`
+    #   (without overwriting anything already found inline) and, when it has a `default`, into
+    #   `defaults` -- so callers that only look at `variables`/`variable_types`/`defaults` don't need
+    #   to know this block exists at all.
     # @option return [String] 'query'             The cleaned SPARQL query
     #
     # @example
@@ -54,6 +64,8 @@ module QueryAnnotationParser
         'enumerate' => {},
         'variables' => [],
         'variable_types' => {},
+        'required' => [],
+        'parameters' => [],
         'query' => ''
       }
 
@@ -77,6 +89,11 @@ module QueryAnnotationParser
       metadata['variables'] = vars
       metadata['variable_types'] = types
 
+      # Fold in any `#+ parameters:` block entries (GRLC's dialect for a parameter with no
+      # type-suffixed inline placeholder) -- must run after extract_parameters above, which
+      # otherwise-unconditionally overwrites 'variables'/'variable_types' wholesale.
+      fold_parameters_block!(metadata)
+
       # Fallback query_id
       metadata['query_id'] = File.basename(file_path, '.*') if metadata['query_id'].nil? || metadata['query_id'].empty?
 
@@ -96,6 +113,7 @@ module QueryAnnotationParser
     def self.parse_all_decorators(decorator_lines, metadata)
       current_key = nil
       current_list = nil
+      current_param = nil # the parameter hash a "parameters:" continuation line belongs to
 
       decorator_lines.each do |line|
         clean = line.sub(/^#\+\s*/, '').strip
@@ -103,7 +121,7 @@ module QueryAnnotationParser
 
         # warn "Parsing decorator line: #{clean}  "
 
-        # Section header like "tags:", "defaults:", "enumerate:"
+        # Section header like "tags:", "defaults:", "enumerate:", "parameters:"
         if clean.end_with?(':')
           key = clean.chomp(':').strip
           # warn "Found section header: #{key}  "
@@ -115,9 +133,12 @@ module QueryAnnotationParser
             metadata['defaults'] = {}
           when 'enumerate'
             metadata['enumerate'] = {}
+          when 'parameters'
+            metadata['parameters'] = []
           end
           current_key = key
           current_list = nil
+          current_param = nil
           next
         end
         # warn "Current key: #{current_key.inspect}, current list: #{current_list.inspect}  "
@@ -143,7 +164,26 @@ module QueryAnnotationParser
               # subsequent "- value" lines belong to the current list
               current_list << parse_value(item)
             end
+          when 'parameters'
+            # "- name: speciesname" starts a new parameter entry; its continuation lines
+            # (type/description/required/default/...) arrive as plain "key: value" lines below,
+            # with no leading "- ", so they're routed by the `current_param` check in the
+            # elsif branch rather than by this one.
+            current_param = {}
+            metadata['parameters'] << current_param
+            if item.include?(':')
+              k, v = item.split(':', 2).map(&:strip)
+              current_param[k] = parse_value(v)
+            end
           end
+
+        # A "parameters:" continuation line (type/description/required/default/... belonging to the
+        # current_param started by the last "- name: ..." list item) -- must be checked before the
+        # generic fallback below, or it would be misread as a new top-level metadata key and would
+        # also clear current_key, breaking every remaining line of this parameter.
+        elsif current_key == 'parameters' && current_param && clean.include?(':')
+          k, v = clean.split(':', 2).map(&:strip)
+          current_param[k] = parse_value(v)
 
         # Simple one-line key: value (query_id, title, endpoint, endpoint_in_url, etc.)
         elsif clean.include?(':')
@@ -151,6 +191,26 @@ module QueryAnnotationParser
           metadata[key] = parse_value(val)
           current_key = nil
         end
+      end
+    end
+
+    # Folds `#+ parameters:` entries (GRLC's dialect for declaring a parameter that has no
+    # type-suffixed inline placeholder, e.g. `?_speciesname` rather than `?_speciesname_string`) into
+    # `variables`/`variable_types`/`defaults`/`required` -- called after `extract_parameters` has
+    # already populated `variables`/`variable_types` from the query text, so callers that only look
+    # at those (plus `defaults`) don't need to know the `parameters:` block exists. Never overwrites
+    # a variable/type/default already found inline or in an explicit `#+ defaults:` block.
+    #
+    # @param metadata [Hash] the metadata hash being built by `.parse`
+    def self.fold_parameters_block!(metadata)
+      metadata['parameters'].each do |param|
+        name = param['name']
+        next unless name
+
+        metadata['variables'] << name unless metadata['variables'].include?(name)
+        metadata['variable_types'][name] ||= normalize_type(param['type'].to_s)
+        metadata['defaults'][name] = param['default'] if param.key?('default') && !metadata['defaults'].key?(name)
+        metadata['required'] << name if param['required'] == true && !metadata['required'].include?(name)
       end
     end
 

@@ -12,15 +12,40 @@ RUN apt-get update -qq && \
       gosu \
     && rm -rf /var/lib/apt/lists/*
 
-# Create non-root user/group
-RUN groupadd -r severance && \
-    useradd -r -g severance -d /app -s /sbin/nologin -c "Docker app user" severance
+# Create non-root user/group. UID is pinned to 1000 (matching
+# internal/Dockerfile's own convention) because entrypoint.sh chowns the
+# mounted volumes to ${UID:-1000}:${GID:-1000} before gosu drops privileges
+# to this user -- without an explicit UID here, useradd auto-assigns one
+# from the system range (999, confirmed live), leaving the app running as
+# a different UID than the one its own entrypoint just chowned the volumes
+# to, and unable to write to /data/queue or /data/results at all.
+RUN groupadd -r -g 1000 severance && \
+    useradd -r -u 1000 -g severance -d /app -s /sbin/nologin -c "Docker app user" severance
 
 WORKDIR /app
 
 # Gem caching layer
 COPY Gemfile Gemfile.lock ./
 RUN bundle install --jobs 4 --retry 3
+
+# net-imap ships as a Ruby "default gem" baked into the base image at
+# whatever version that Ruby patch release bundled (0.3.9 here) -- pinning
+# a newer version in the Gemfile (unused by this app; pulled in purely to
+# get a patched version) installs it alongside the old one rather than
+# replacing it, since Bundler and RubyGems' own default-gem installation
+# use different paths. The stale, vulnerable default copy still sits on
+# disk either way; remove it explicitly so it isn't there at all, rather
+# than just shadowed by the newer bundled copy at runtime.
+RUN gem uninstall -i /usr/local/lib/ruby/gems/3.2.0 net-imap --all --force || true
+# json is also a default gem, and IS actually used by this app (unlike
+# net-imap) -- confirmed live that `bundle exec` (what entrypoint.sh
+# actually runs under) correctly resolves the newer Bundler-managed copy
+# first, so the version bump in the Gemfile is real and effective. Unlike
+# net-imap, RubyGems refuses to uninstall it ("cannot be uninstalled
+# because it is a default gem" -- it's a compiled default gem, not a pure
+# Ruby one) -- the older, vulnerable version stays physically present on
+# disk (Trivy will keep flagging it) but is never loaded by the running
+# application.
 
 # Copy app + entrypoint
 COPY VERSION outie.rb ./

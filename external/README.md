@@ -18,7 +18,7 @@
 
 ### env_template
 
-    ENCRYPTION_KEY_HEX=0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef
+    ENCRYPTION_KEY_HEX=<generate with: openssl rand -hex 32>
     RESULT_FORMAT=csv                  # or "json"
     QUERY_DIR=/queries   # DO NOT CHANGE THIS unless you really know what you're doing
     QUEUE_DIR=/data/queue  # DO NOT CHANGE THIS unless you really know what you're doing
@@ -27,7 +27,7 @@
     ALLOWED_INTERNAL_IPS=172.31.0.1,127.0.0.1,::1,192.168.1.100   # CHANGE 192.168.1.100 to the IP of Internal 
     METADATA_DIR=/queries-metadata  # Don't change this unless you know what you're doing
 
-`ALLOWED_INTERNAL_IPS` is a whitelist of IP addresses that are allowed to access the portions of the API that do not require authentication.  It should be VERY restrictive - maybe including localhost/127.0.0.1 only during testing
+`ALLOWED_INTERNAL_IPS` is a whitelist of addresses that are allowed to access the portions of the API that do not require authentication.  Each comma-separated entry may be a bare IP (`192.168.1.100`), a CIDR range (`192.168.1.0/24`), or the literal keyword `localhost`.  It should be VERY restrictive - maybe including localhost/127.0.0.1 only during testing
 
 The `ENCRYPTION_KEY_HEX` must be shared with the external componenet, since all results are encrypted
 
@@ -39,6 +39,22 @@ The `ENCRYPTION_KEY_HEX` must be shared with the external componenet, since all 
     services:
         external:
             image: XXXXX  (the docker-compose in the Severance GitHub ./external folder points to the latest patch)
+            restart: always
+            security_opt:
+                - "no-new-privileges:true"
+            cap_drop:
+                - ALL
+            cap_add:
+                # entrypoint.sh runs as root to chown the mounted volumes to the
+                # severance user before dropping privileges via gosu -- these
+                # are the only capabilities that step needs.
+                - CHOWN
+                - DAC_OVERRIDE
+                - FOWNER
+                - SETUID
+                - SETGID
+            mem_limit: 512m
+            cpus: 1
             ports: ["3000:3000"]  # runs on 3000 internally
             env_file:
                 - .env

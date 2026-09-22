@@ -1,0 +1,26 @@
+# All SHALLOT_FACADE_-prefixed to avoid colliding with unrelated env vars on a host that also runs
+# Severance (or anything else) alongside this facade.
+SHALLOT_FACADE_PORT=4567
+SHALLOT_FACADE_BIND=0.0.0.0
+
+# This facade's own externally-reachable base URL -- scheme/host/path prefix must match whatever
+# dcat:endpointURL a caller (e.g. the FLAIR-GG VP) registers for a query routed through this facade
+# (<SHALLOT_FACADE_BASE_URL>/<query_id>). See lib/openapi_builder.rb.
+SHALLOT_FACADE_BASE_URL=http://localhost:4567
+
+# Severance External endpoint this facade submits queries to, and the token it authenticates with.
+# Needs Severance's before-filter fix (see CHANGELOG.md "Fixed" entry, 2026-09) to reach
+# GET /severance/jobs/:uuid and GET /severance/available_queries at all.
+SHALLOT_FACADE_SEVERANCE_URL=http://localhost:3000
+SHALLOT_FACADE_SEVERANCE_AUTH_TOKEN=YesItsMe
+
+# Blocking poll loop against Severance External while waiting for Internal to pick up and answer the
+# job. Severance Internal's own POLL_INTERVAL (default 10s in its env_template) determines how fast a
+# submitted job can possibly be answered -- tune SHALLOT_FACADE_POLL_CEILING here accordingly.
+SHALLOT_FACADE_POLL_INTERVAL=1
+SHALLOT_FACADE_POLL_CEILING=20
+
+# Content type(s) this Severance deployment's RESULT_FORMAT actually returns (csv -> text/csv, json ->
+# application/sparql-results+json) -- purely documentation for the OpenAPI doc this facade serves;
+# comma-separated if more than one is genuinely possible.
+SHALLOT_FACADE_PRODUCES=application/sparql-results+json

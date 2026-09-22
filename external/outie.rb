@@ -6,12 +6,38 @@ require 'json'
 require 'securerandom'
 require 'openssl'
 require 'fileutils'
+require 'ipaddr'
+
+# Sinatra 4.x/rack-protection 4.x enable Rack::Protection::HostAuthorization
+# by default, which rejects any Host header outside a small built-in
+# allowlist (`localhost`, IP literals, etc.) with a bare 403 "Host not
+# permitted" -- before any application code, including the `before` filter
+# below, ever runs. `set :protection, except: :host_authorization` (the line
+# this replaced) is Sinatra's documented way to disable one protection, but
+# has proven unreliable across versions in this codebase's sibling projects
+# (see Sextans-Suite's yarrrml-rml/t.rb and Daemon/transform-cdev2.rb, which
+# hit the identical failure and document it in more detail) -- confirmed
+# live here too: External still rejected requests addressed by any hostname
+# other than `localhost`/an IP literal (e.g. `host.docker.internal`, or any
+# real DNS name a deployment might put in EXTERNAL_URL) even with this
+# setting in place. Monkeypatching `accepts?` directly is the fix that has
+# actually held. HostAuthorization exists to defend against DNS-rebinding
+# attacks, where a *browser* is tricked into sending a request with an
+# attacker-chosen Host header; External doesn't render browser-served HTML
+# or trust the Host header for anything security-sensitive (every mutating
+# endpoint already requires its own Bearer token), so disabling this
+# specific check costs nothing real here.
+require 'rack/protection/host_authorization'
+class Rack::Protection::HostAuthorization
+  def accepts?(_request)
+    true
+  end
+end
 
 configure do
   set :server, 'puma'
   set :bind, '0.0.0.0'
   set :port, ENV.fetch('PORT', 4567).to_i
-  set :protection, except: :host_authorization
   # Let `error` blocks (see JSON::ParserError below) handle exceptions
   # regardless of RACK_ENV -- Sinatra's development-mode exception page
   # would otherwise intercept them before a custom handler ever runs.
@@ -59,9 +85,28 @@ class ZeroingBody
   end
 end
 
-# AES-256-GCM encryption key derived from hex environment variable
-ENCRYPTION_KEY = [ENV.fetch('ENCRYPTION_KEY_HEX',
-                            '0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef')].pack('H*')
+# AES-256-GCM encryption key derived from hex environment variable.
+#
+# Previously fell back to a fixed, literal default (published in this
+# repo's own env_template/README as the example value) whenever
+# ENCRYPTION_KEY_HEX wasn't set -- silently "encrypting" every result with
+# a key anyone can read in this project's own source, giving a deployer who
+# forgot to set it a false sense of security rather than an obvious error.
+# Refusing to start is the fail-closed behavior this project uses
+# everywhere else for exactly this class of mistake (see the IRI/encoding
+# rejection paths in internal/innie.rb).
+EXAMPLE_ENCRYPTION_KEY_HEX = '0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef'
+raw_encryption_key_hex = ENV['ENCRYPTION_KEY_HEX']&.strip
+if raw_encryption_key_hex.nil? || raw_encryption_key_hex.empty?
+  abort 'FATAL: ENCRYPTION_KEY_HEX is not set. Generate one with `openssl rand -hex 32` ' \
+        'and set it identically on both External and Internal -- refusing to start with no key ' \
+        'rather than silently falling back to a known, public default.'
+elsif raw_encryption_key_hex == EXAMPLE_ENCRYPTION_KEY_HEX
+  abort 'FATAL: ENCRYPTION_KEY_HEX is still the example value from env_template/README.md. ' \
+        'Generate a real one with `openssl rand -hex 32` -- refusing to start with a key ' \
+        'anyone can read in this project\'s own source.'
+end
+ENCRYPTION_KEY = [raw_encryption_key_hex].pack('H*')
 
 # Content-Type for query results (json or csv)
 CONTENT_TYPE = ENV['RESULT_FORMAT'] == 'csv' ? 'text/csv' : 'application/sparql-results+json'
@@ -133,20 +178,54 @@ end
 
 # ============== Security: Internal IP filtering for sensitive endpoints ==============
 
+# Whether `client_ip` is covered by `entry`, an ALLOWED_INTERNAL_IPS list
+# item -- either the literal keyword "localhost", a bare IP (unchanged
+# behavior from before), or now also a CIDR range (e.g. "192.168.1.0/24").
+# A malformed entry is skipped (logged, not matched) rather than crashing
+# the whole check -- one bad entry in the list shouldn't take down every
+# request to these internal-only endpoints. IPAddr#include? itself returns
+# false (doesn't raise) when comparing across address families (e.g. a v4
+# range against a v6 client), so no special-casing is needed for that.
+def internal_ip_allowed?(entry, client_ip)
+  return ['127.0.0.1', '::1'].include?(client_ip) if entry == 'localhost'
+
+  IPAddr.new(entry).include?(IPAddr.new(client_ip))
+rescue ArgumentError => e
+  # IPAddr::Error (raised for a malformed entry/IP) is itself a subclass of
+  # ArgumentError -- rescuing both would be redundant.
+  warn "⚠ Skipping invalid ALLOWED_INTERNAL_IPS entry #{entry.inspect}: #{e.message}"
+  false
+end
+
 # Security filter applied to every request.
 #
-# - Internal endpoints (`/severance/queue/pull`, `/severance/jobs/*`, `/severance/available_queries`)
-#   are only accessible from whitelisted IPs (default: localhost).
-# - All other (user-facing) endpoints require a valid `Bearer` token if `AUTH_TOKEN` is set.
+# - Internal endpoints, used only by Innie itself, are only accessible from whitelisted IPs (default:
+#   localhost): `GET /severance/queue/pull` (pull the next job), `POST /severance/jobs/:uuid/result`
+#   (push a finished one back), and `POST /severance/available_queries` (push the current query
+#   catalogue -- innie.rb never sends a Bearer token for this, by design, the same trust boundary as
+#   its other two calls). Each ALLOWED_INTERNAL_IPS entry may be a bare IP or a CIDR range.
+# - Every other endpoint, including the caller-facing `GET /severance/jobs/:uuid` (polling for a
+#   result) and `GET /severance/available_queries` (reading the catalogue -- same path as Innie's push
+#   above, but a different verb and a different caller), requires a valid `Bearer` token if
+#   `AUTH_TOKEN` is set -- exactly as documented in external/README.md's own curl examples.
+#   NOTE: an earlier version of this filter matched `/severance/jobs/` and `/severance/available_queries`
+#   as path *prefixes* regardless of HTTP method, which also caught the caller-facing GET routes and
+#   made them unreachable for any external Bearer-authenticated caller (403 unless that caller also
+#   happened to be on an allowlisted IP). A first fix (2026-09-22) corrected `/severance/jobs/` but
+#   missed that `/severance/available_queries` needs the identical GET-vs-POST split -- caught only by
+#   a real end-to-end run (Innie's queries never got registered, no unit-level check exercised the push
+#   route) -- fixed here by matching each of Innie's three routes exactly, by method, instead of by path
+#   prefix alone.
 before do
   # === Internal calls from Innie (no auth required) ===
-  internal_paths = ['/severance/queue/pull', '/severance/jobs/', '/severance/available_queries']
-  if internal_paths.any? { |p| request.path_info.start_with?(p) }
-    allowed_ips = (ENV['ALLOWED_INTERNAL_IPS'] || '127.0.0.1,::1,localhost').split(',').map(&:strip)
+  is_internal_get = request.request_method == 'GET' && request.path_info == '/severance/queue/pull'
+  is_internal_post = request.request_method == 'POST' &&
+                      (request.path_info == '/severance/available_queries' ||
+                       request.path_info =~ %r{\A/severance/jobs/[^/]+/result\z})
+  if is_internal_get || is_internal_post
+    allowed_entries = (ENV['ALLOWED_INTERNAL_IPS'] || '127.0.0.1,::1,localhost').split(',').map(&:strip)
     client_ip = request.ip
-    # Allow if client IP is in the list or it's localhost
-    is_allowed = allowed_ips.include?(client_ip) ||
-                 (allowed_ips.include?('localhost') && ['127.0.0.1', '::1'].include?(client_ip))
+    is_allowed = allowed_entries.any? { |entry| internal_ip_allowed?(entry, client_ip) }
     halt 403, "Access denied from #{client_ip} - internal IP required" unless is_allowed
     # Internal call → bypass Bearer token check
     return
