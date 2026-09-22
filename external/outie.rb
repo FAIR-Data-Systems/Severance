@@ -199,22 +199,30 @@ end
 
 # Security filter applied to every request.
 #
-# - Internal endpoints, used only by Innie itself (`GET /severance/queue/pull` to pull the next job,
-#   `POST /severance/jobs/:uuid/result` to push a finished one back) are only accessible from
-#   whitelisted IPs (default: localhost). Each ALLOWED_INTERNAL_IPS entry may be a bare IP or a CIDR
-#   range.
+# - Internal endpoints, used only by Innie itself, are only accessible from whitelisted IPs (default:
+#   localhost): `GET /severance/queue/pull` (pull the next job), `POST /severance/jobs/:uuid/result`
+#   (push a finished one back), and `POST /severance/available_queries` (push the current query
+#   catalogue -- innie.rb never sends a Bearer token for this, by design, the same trust boundary as
+#   its other two calls). Each ALLOWED_INTERNAL_IPS entry may be a bare IP or a CIDR range.
 # - Every other endpoint, including the caller-facing `GET /severance/jobs/:uuid` (polling for a
-#   result) and `GET /severance/available_queries` (the query catalogue), requires a valid `Bearer`
-#   token if `AUTH_TOKEN` is set -- exactly as documented in external/README.md's own curl examples.
-#   NOTE: an earlier version of this filter matched `/severance/jobs/` as a path *prefix*, which also
-#   caught the caller-facing GET route and made it unreachable for any external Bearer-authenticated
-#   caller (403 unless that caller also happened to be on an allowlisted IP) -- fixed here by matching
-#   Innie's own two routes exactly instead of the shared prefix.
+#   result) and `GET /severance/available_queries` (reading the catalogue -- same path as Innie's push
+#   above, but a different verb and a different caller), requires a valid `Bearer` token if
+#   `AUTH_TOKEN` is set -- exactly as documented in external/README.md's own curl examples.
+#   NOTE: an earlier version of this filter matched `/severance/jobs/` and `/severance/available_queries`
+#   as path *prefixes* regardless of HTTP method, which also caught the caller-facing GET routes and
+#   made them unreachable for any external Bearer-authenticated caller (403 unless that caller also
+#   happened to be on an allowlisted IP). A first fix (2026-09-22) corrected `/severance/jobs/` but
+#   missed that `/severance/available_queries` needs the identical GET-vs-POST split -- caught only by
+#   a real end-to-end run (Innie's queries never got registered, no unit-level check exercised the push
+#   route) -- fixed here by matching each of Innie's three routes exactly, by method, instead of by path
+#   prefix alone.
 before do
   # === Internal calls from Innie (no auth required) ===
-  internal_paths = ['/severance/queue/pull']
-  is_internal_result_push = request.request_method == 'POST' && request.path_info =~ %r{\A/severance/jobs/[^/]+/result\z}
-  if internal_paths.any? { |p| request.path_info == p } || is_internal_result_push
+  is_internal_get = request.request_method == 'GET' && request.path_info == '/severance/queue/pull'
+  is_internal_post = request.request_method == 'POST' &&
+                      (request.path_info == '/severance/available_queries' ||
+                       request.path_info =~ %r{\A/severance/jobs/[^/]+/result\z})
+  if is_internal_get || is_internal_post
     allowed_entries = (ENV['ALLOWED_INTERNAL_IPS'] || '127.0.0.1,::1,localhost').split(',').map(&:strip)
     client_ip = request.ip
     is_allowed = allowed_entries.any? { |entry| internal_ip_allowed?(entry, client_ip) }

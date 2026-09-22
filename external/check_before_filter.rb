@@ -11,6 +11,8 @@
 # Run directly: `ruby check_before_filter.rb` (exits non-zero and prints failures on any mismatch).
 
 require 'tmpdir'
+require 'fileutils'
+require 'json'
 
 ENV['ENCRYPTION_KEY_HEX'] = '1' * 64
 ENV['AUTH_TOKEN'] = 'test-token'
@@ -18,6 +20,8 @@ ENV['ALLOWED_INTERNAL_IPS'] = '203.0.113.0/24'
 scratch = Dir.mktmpdir('severance-before-filter-check')
 ENV['QUEUE_DIR'] = File.join(scratch, 'queue')
 ENV['RESULTS_DIR'] = File.join(scratch, 'results')
+ENV['METADATA_DIR'] = File.join(scratch, 'metadata')
+FileUtils.mkdir_p(ENV.fetch('METADATA_DIR'))
 
 require 'rack/mock'
 require_relative 'outie'
@@ -62,6 +66,24 @@ check(failures, '[internal IP, no Bearer] GET /severance/queue/pull',
 check(failures, '[internal IP, no Bearer] POST /severance/jobs/:uuid/result',
       app.post('/severance/jobs/does-not-exist/result', env_for(INTERNAL_IP).merge(result_post_opts)),
       [200])
+
+# POST /severance/available_queries (Innie pushing its catalogue) shares its path with the
+# caller-facing GET of the same name, but is itself an Innie-only route (innie.rb never sends a
+# Bearer token for this push) -- missed by the first before-filter fix above, caught only by a real
+# end-to-end run (see CLAUDE_SESSION_HANDOFF_2026-09-22.md), so covered explicitly here.
+available_queries_post_opts = { input: '[]', 'CONTENT_TYPE' => 'application/json' }
+check(failures, '[internal IP, no Bearer] POST /severance/available_queries',
+      app.post('/severance/available_queries', env_for(INTERNAL_IP).merge(available_queries_post_opts)),
+      [200])
+check(failures, '[external IP, Bearer] POST /severance/available_queries (should be internal-IP only)',
+      app.post('/severance/available_queries', env_for(EXTERNAL_IP, bearer).merge(available_queries_post_opts)),
+      [403])
+# Unlike the caller-facing GET/jobs routes, a POST here is *always* IP-gated (never falls through to
+# the Bearer check, since Innie never sends one) -- so a non-internal caller gets 403 regardless of
+# whether it presents a Bearer token, not 401.
+check(failures, '[external IP, no auth] POST /severance/available_queries',
+      app.post('/severance/available_queries', env_for(EXTERNAL_IP).merge(available_queries_post_opts)),
+      [403])
 
 # ...but still needs a Bearer token for the caller-facing routes -- being on an allowed internal IP
 # doesn't grant a free pass to routes gated by AUTH_TOKEN instead of the IP check.
