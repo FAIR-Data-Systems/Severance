@@ -10,21 +10,31 @@ timestamp=$(date +"%Y-%m-%d")
 mkdir -p ./security_scan_output/old
 find ./security_scan_output -maxdepth 1 -type f \( -name '*.json' -o -name '*.csv' \) -exec mv {} ./security_scan_output/old/ \;
 
-# Both Severance images are ours (built from ../external and ../internal in
-# this repo), so each one gets built fresh from source first -- not just
-# OS-patched on top of a stale previous build -- so any Dockerfile-level fix
-# (a dependency bump, a hardening change) actually reaches the patched image,
-# not only the OS package layer. The OS layer is then patched on top of that
-# fresh build (shell in, apt update/dist-upgrade, commit) rather than baked
-# into the Dockerfile itself, since re-running this script regularly is what
-# actually keeps the OS layer current -- a Dockerfile-baked dist-upgrade
-# would only be as fresh as whenever the Dockerfile itself was last built.
+# All four images patched by this script are ours (built from source in this
+# repo -- external/, internal/, facades/shallot-facade), so each one gets
+# built fresh from source first -- not just OS-patched on top of a stale
+# previous build -- so any Dockerfile-level fix (a dependency bump, a
+# hardening change) actually reaches the patched image, not only the OS
+# package layer. The OS layer is then patched on top of that fresh build
+# (shell in, apt/apk update+upgrade, commit) rather than baked into the
+# Dockerfile itself, since re-running this script regularly is what actually
+# keeps the OS layer current -- a Dockerfile-baked dist-upgrade would only be
+# as fresh as whenever the Dockerfile itself was last built.
+#
+# Two base OS families exist across these images (external/internal are
+# ruby:3.2-slim, i.e. Debian/apt; shallot-facade is ruby:3.2-alpine, i.e.
+# apk), so the OS-patch step is parameterized by package manager rather than
+# hardcoded to apt as it was when this function only ever patched the first
+# two. The image's own build-arg name for its baked-in VERSION label also
+# isn't shared (SEVERANCE_VERSION for external/internal; SHALLOT_FACADE_VERSION
+# for its facade -- each project's own env-var-prefix convention, kept as-is
+# rather than forced into a shared name).
 #
 # All progress output below goes to stderr; the final `fairdatasystems/
 # <name>:<timestamp>` tag is the only thing written to stdout, so callers can
 # capture it with `tag=$(patch_image ...)` while still seeing live progress.
 patch_image() {
-  local name="$1" build_dir="$2" version_file="$3"
+  local name="$1" build_dir="$2" version_file="$3" version_arg="$4" pkg_mgr="$5"
   local build_tag="${name}:build-${timestamp}"
   local outputfile="./security_scan_output/scanresults_${name}_${timestamp}.json"
 
@@ -33,26 +43,37 @@ patch_image() {
     echo "=== ${name} ==="
     echo "building ${build_tag} from ${build_dir}"
   } >&2
-  docker build --build-arg SEVERANCE_VERSION="$(cat "${version_file}")" \
+  docker build --build-arg "${version_arg}=$(cat "${version_file}")" \
     -t "${build_tag}" "${build_dir}" >&2
 
   docker rm -f "${name}" >/dev/null 2>&1 || true
-  # Both outie.rb and innie.rb now abort immediately if ENCRYPTION_KEY_HEX
-  # isn't set (a deliberate fail-closed check, not a bug) -- without a real
-  # value here the container's PID1 exits right after `docker run`, and
-  # every `docker exec` below silently fails with "container is not
-  # running" instead of actually patching anything. This key is thrown
-  # away with the container once patching is done; it never serves real
-  # traffic, so it doesn't need to be the deployment's real key.
+  # outie.rb and innie.rb both abort immediately if ENCRYPTION_KEY_HEX isn't
+  # set (a deliberate fail-closed check, not a bug) -- without a real value
+  # here the container's PID1 exits right after `docker run`, and every
+  # `docker exec` below silently fails with "container is not running"
+  # instead of actually patching anything. shallot-facade doesn't read this
+  # var at all, so passing it there is simply ignored -- harmless, and
+  # keeps this one `docker run` line the same for every image rather than
+  # branching on it. This key is thrown away with the container once
+  # patching is done; it never serves real traffic, so it doesn't need to
+  # be the deployment's real key.
   local patch_key
   patch_key=$(openssl rand -hex 32)
   docker run -d --name "${name}" -e "ENCRYPTION_KEY_HEX=${patch_key}" "${build_tag}" >&2
   sleep 2
   echo "updating ${name}" >&2
-  docker exec "${name}" apt-get -y update >&2
-  docker exec "${name}" apt-get -y dist-upgrade --fix-missing >&2
-  docker start "${name}" >/dev/null 2>&1 || true
-  docker exec "${name}" apt-get -y autoclean >&2
+  if [ "${pkg_mgr}" = "apk" ]; then
+    # -u root: these images (unlike external/internal, which have no USER
+    # directive and default to root) bake in a non-root USER, so a plain
+    # `docker exec` would run as that user and apk would fail with a
+    # permission error -- matching Sextans-Suite's own Alpine-image handling.
+    docker exec -u root "${name}" sh -c "apk update && apk upgrade --no-cache --force-missing-repositories" >&2
+  else
+    docker exec "${name}" apt-get -y update >&2
+    docker exec "${name}" apt-get -y dist-upgrade --fix-missing >&2
+    docker start "${name}" >/dev/null 2>&1 || true
+    docker exec "${name}" apt-get -y autoclean >&2
+  fi
   echo "commit" >&2
   docker commit "${name}" "fairdatasystems/${name}:${timestamp}" >&2
   docker stop "${name}" >/dev/null
@@ -69,16 +90,40 @@ patch_image() {
   echo "fairdatasystems/${name}:${timestamp}"
 }
 
-SIN=$(patch_image sevinternal ../internal ../internal/VERSION)
-SOUT=$(patch_image sevexternal ../external ../external/VERSION)
+SIN=$(patch_image sevinternal ../internal ../internal/VERSION SEVERANCE_VERSION apt)
+SOUT=$(patch_image sevexternal ../external ../external/VERSION SEVERANCE_VERSION apt)
+SFAC=$(patch_image shallotfacade ../facades/shallot-facade ../facades/shallot-facade/VERSION SHALLOT_FACADE_VERSION apk)
 
 cp inner-docker-compose-template-template.yml inner-docker-compose-template-tmp.yml
 cp outer-docker-compose-template-template.yml outer-docker-compose-template-tmp.yml
+cp shallot-docker-compose-template-template.yml shallot-docker-compose-template-tmp.yml
 sed -i'' -e "s!{SIN}!${SIN}!" "inner-docker-compose-template-tmp.yml"
 sed -i'' -e "s!{SOUT}!${SOUT}!" "outer-docker-compose-template-tmp.yml"
+sed -i'' -e "s!{SFAC}!${SFAC}!" "shallot-docker-compose-template-tmp.yml"
 
 mv inner-docker-compose-template-tmp.yml ../internal/docker-compose.yml
 mv outer-docker-compose-template-tmp.yml ../external/docker-compose.yml
+mv shallot-docker-compose-template-tmp.yml ../facades/shallot-facade/docker-compose.yml
+
+# beacon-facade lives in a different repo (CARE-Semantic-Model-Version-2), not a sibling in
+# this one, unlike shallot-facade -- it's domain-specific (real CARE-SM-2/ERDERA ontology
+# terms, response shaping built for RDVP-Portal-backend specifically), where shallot-facade is
+# pure protocol translation with no knowledge of any data model. Still patched from here,
+# though: Sextans-Suite's own pipeline already clones this same repo to build its "care2"
+# image from implementation/Toolkit, so one pipeline building an image from another repo's
+# committed (never local/uncommitted) source is already an established pattern, not a new kind
+# of coupling. Unlike care2 (whose tag is substituted into Sextans' own compose templates),
+# nothing in Severance consumes a beacon-facade tag, so there is no downstream template to
+# write it into -- the tag is just printed, same as Sextans already does for care2/fdpserv2;
+# update CARE-Semantic-Model-Version-2's own implementation/Beacon2/facade/docker-compose.yml
+# by hand (or from that repo's own tooling, if it grows one).
+beacon_clone_dir=$(mktemp -d)
+git clone --depth 1 https://github.com/wilkinsonlab/CARE-Semantic-Model-Version-2.git "${beacon_clone_dir}" >&2
+BFAC=$(patch_image beaconfacade "${beacon_clone_dir}/implementation/Beacon2/facade" \
+  "${beacon_clone_dir}/implementation/Beacon2/facade/VERSION" BEACON_FACADE_VERSION apk)
+rm -rf "${beacon_clone_dir}"
+echo "beacon-facade patched: ${BFAC}" >&2
+echo "  -> update CARE-Semantic-Model-Version-2's implementation/Beacon2/facade/docker-compose.yml by hand" >&2
 
 ruby parse-security-scans.rb ./security_scan_output/*.json
 python3 build_register.py

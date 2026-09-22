@@ -47,8 +47,15 @@ capability of Severance itself, not of any one project that happens to use Sever
 if you changed it from the default). Hardened the same way as Severance's own `external/` and
 `internal/` compose files: `restart: always`, `security_opt: no-new-privileges`, `cap_drop: [ALL]`
 (no `cap_add` needed here -- this Dockerfile never runs as root at all, unlike `external/`'s
-chown-then-`gosu` step, since there are no volumes to chown), `mem_limit`/`cpus` ceilings. Builds from
-source (`build: .`) rather than pulling a published tag, since this facade has no registry image yet.
+chown-then-`gosu` step, since there are no volumes to chown), `mem_limit`/`cpus` ceilings.
+
+**Covered by `Security/security-patch.sh`**, alongside `external`/`internal` -- it builds this image
+fresh from source, OS-patches it (`apk`, this being Alpine-based unlike the other two's Debian-based
+`apt`), pushes `fairdatasystems/shallotfacade:<date>`, Trivy-scans it, and rewrites this file's `image:`
+to the newly patched tag (from `Security/shallot-docker-compose-template-template.yml`). Until that's
+been run at least once, `docker-compose.yml` here still points at a `:local` tag built with `build: .`
+(what a real run replaces) -- run `docker build -t fairdatasystems/shallotfacade:local .` yourself in
+the meantime, or run the pipeline.
 
 ## Configuration reference
 

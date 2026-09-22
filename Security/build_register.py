@@ -43,6 +43,25 @@ IMAGE_INFO = {
                               "network in a real deployment. Built from our own Dockerfile "
                               "(internal/Dockerfile) -- every finding here is ours to patch "
                               "directly."},
+    "shallotfacade": {"exposure": 1, "control": "owned",
+                       "note": "shallot-facade: makes Severance look like a Shallot service to "
+                                "callers (e.g. the FLAIR-GG VP). Network-exposed by design, same "
+                                "as External. Built from our own Dockerfile "
+                                "(facades/shallot-facade/Dockerfile) -- every finding here is "
+                                "ours to patch directly. Domain-agnostic (no knowledge of any "
+                                "data model), so it lives in this repo; its domain-specific "
+                                "sibling, beacon-facade, lives in a different repo (see below)."},
+    "beaconfacade": {"exposure": 1, "control": "owned",
+                      "note": "beacon-facade: makes Severance look like a GA4GH Beacon v2 API "
+                               "for CARE-SM-2 data (e.g. for ERDERA's VP). Network-exposed by "
+                               "design. Source lives in a different repo "
+                               "(CARE-Semantic-Model-Version-2/implementation/Beacon2/facade, "
+                               "its own Dockerfile) since it's domain-specific, not a sibling of "
+                               "shallot-facade in this repo -- but still patched from here, "
+                               "cloned fresh each run, the same pattern Sextans-Suite's own "
+                               "pipeline already uses to patch that repo's 'care2' image. Every "
+                               "finding here is still ours to patch directly, just via a commit "
+                               "in that other repo rather than this one."},
 }
 
 # Manually researched dispositions for CVEs that need individual judgment,
