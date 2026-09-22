@@ -22,13 +22,13 @@
 ### env_template
 
     # must be the same key as the External component!
-    ENCRYPTION_KEY_HEX=0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef
+    ENCRYPTION_KEY_HEX=<generate with: openssl rand -hex 32>
     RESULT_FORMAT=csv  # must be the same as the External component!
     QUERY_DIR=/queries  # DO NOT CHANGE THIS unless you really know what you're doing
     EXTERNAL_URL=http://111.111.111.111:3000   # The URL to the External API.  
     TRIPLESTORE_URL=http://localhost:8890/sparql-auth  # Virtuoso's Digest-authenticated SPARQL endpoint
-    TRIPLESTORE_USER = markw
-    TRIPLESTORE_PASS = markw
+    TRIPLESTORE_USER = <your Virtuoso read-only username>
+    TRIPLESTORE_PASS = <your Virtuoso read-only password>
     POLL_INTERVAL=10  # seconds
     UID=1000   #  at terminal:   id -u
     GID=1000   # at terminal:  id -g
@@ -72,7 +72,8 @@ not the host, so if you're running everything on one box for testing, point
 the `extra_hosts` entry below makes that resolve to the host.
 
     services:
-    internal:
+      internal:
+        image: XXXXX  # the docker-compose.yml in the internal/ folder of the repo points to the latest patch -- copy that file, don't type this by hand
         restart: always
         security_opt:
           - "no-new-privileges:true"
@@ -82,15 +83,15 @@ the `extra_hosts` entry below makes that resolve to the host.
         cpus: 1
         extra_hosts:
           - "host.docker.internal:host-gateway"   # a localhost-equivalent for same-host testing
-        image: XXXXX  (the docker-compose in the example, it points to the latest patch)        env_file: .env
+        env_file: .env
         volumes:
-        - "./queries:/queries"
+          - "./queries:/queries"
         tmpfs:
-        - /tmp:size=64m,noexec,nosuid,nodev
+          - /tmp:size=64m,noexec,nosuid,nodev
         environment:
-        - TMPDIR=/tmp
-        - UID=${UID:-1000}   #the output of  id -u at the terminal, set in .env
-        - GID=${GID:-1000}   #the output of  id -g at the terminal, set in .env
+          - TMPDIR=/tmp
+          - UID=${UID:-1000}   #the output of  id -u at the terminal, set in .env
+          - GID=${GID:-1000}   #the output of  id -g at the terminal, set in .env
         user: "${UID:-1000}:${GID:-1000}"   # Run container as your host user, or 1000 fallback (which is usually the first non-root user created on a Linux system)  
         
 

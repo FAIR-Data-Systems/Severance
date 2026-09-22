@@ -38,7 +38,7 @@ The `ENCRYPTION_KEY_HEX` must be shared with the external componenet, since all 
 
     services:
         external:
-            image: XXXXX  (the docker-compose in the Severance GitHub ./external folder points to the latest patch)
+            image: XXXXX  # the docker-compose.yml in the external/ folder of the repo points to the latest patch -- copy that file, don't type this by hand
             restart: always
             security_opt:
                 - "no-new-privileges:true"
@@ -80,7 +80,9 @@ if you see an error, there is a problem!  Check what kind of error, and make sur
 #### Any known queries?
 `curl -X GET http://localhost:3000/severance/available_queries   -H "Authorization: Bearer YesItsMe"   -H "Accept: application/json"`
 
-returns JSON annotation of known queries (documentation pending!)
+returns a JSON list of every query the Internal component has installed -- see the
+[`/severance/available_queries`](#severanceavailable_queries) section further down for the full
+response shape and what each field means.
 
 #### Submit a query request
 

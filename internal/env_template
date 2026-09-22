@@ -3,8 +3,8 @@ RESULT_FORMAT=csv  # must be the same as the External component!
 QUERY_DIR=/queries  # DO NOT CHANGE THIS unless you really know what you're doing
 EXTERNAL_URL=http://localhost:3000   # The URL to the External API. 
 TRIPLESTORE_URL=http://localhost:8890/sparql-auth  # Virtuoso's Digest-authenticated SPARQL endpoint -- make sure you create the readonly user
-TRIPLESTORE_USER = markw
-TRIPLESTORE_PASS = markw
+TRIPLESTORE_USER = <your Virtuoso read-only username>
+TRIPLESTORE_PASS = <your Virtuoso read-only password>
 POLL_INTERVAL=10  # seconds
 # these set the permissions on the ./queries folder so that you can edit it 
 UID=1000   #  at terminal:   id -u  set this to whatever the output is!
