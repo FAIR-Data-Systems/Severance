@@ -28,14 +28,22 @@ COPY --from=builder /usr/local/bundle /usr/local/bundle
 COPY --chown=shallotfacade:shallotfacade Gemfile Gemfile.lock VERSION app.rb config.ru ./
 COPY --chown=shallotfacade:shallotfacade lib/ ./lib/
 
-# net-imap ships as a Ruby "default gem" baked into this base image at whatever version that Ruby
-# patch release bundled (0.3.9 here) -- pinning a newer version in the Gemfile (unused by this app;
-# pulled in purely to get a patched version) installs it alongside the old one rather than replacing
-# it, since Bundler and RubyGems' own default-gem installation use different paths. The stale,
-# vulnerable default copy still sits on disk either way; remove it explicitly so it isn't there at
-# all. Same fix as external/internal's own Dockerfiles; must run before USER drops root below, since
-# removing a system gem needs write access to /usr/local/lib/ruby/gems.
+# net-imap, erb, and resolv all ship as Ruby "default gems" baked into this base image at whatever
+# version that Ruby patch release bundled -- pinning a newer version in the Gemfile (unused by this
+# app; pulled in purely to get a patched version) installs it alongside the old one rather than
+# replacing it, since Bundler and RubyGems' own default-gem installation use different paths. Attempt
+# to remove each stale default copy explicitly so it isn't there at all; must run before USER drops
+# root below, since removing a system gem needs write access to /usr/local/lib/ruby/gems. Confirmed
+# live: net-imap is a pure-Ruby default gem and uninstalls cleanly. erb and resolv are *compiled*
+# default gems (same category as external/Dockerfile's json) and refuse uninstall outright ("cannot
+# be uninstalled because it is a default gem") -- `|| true` lets the build continue rather than fail
+# on that. Their stale, vulnerable copies stay physically present on disk (Trivy will likely keep
+# flagging them by filesystem presence), but `bundle exec` -- the only way this app ever runs, see the
+# CMD below -- correctly resolves the newer Bundler-managed copy first, so the pin is still real and
+# effective for anything this process actually loads at runtime.
 RUN gem uninstall -i /usr/local/lib/ruby/gems/3.2.0 net-imap --all --force || true
+RUN gem uninstall -i /usr/local/lib/ruby/gems/3.2.0 erb --all --force || true
+RUN gem uninstall -i /usr/local/lib/ruby/gems/3.2.0 resolv --all --force || true
 
 ARG SHALLOT_FACADE_VERSION
 LABEL org.opencontainers.image.title="shallot-facade" \
