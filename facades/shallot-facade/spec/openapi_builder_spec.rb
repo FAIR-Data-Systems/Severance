@@ -40,13 +40,15 @@ RSpec.describe OpenapiBuilder do
     end
 
     it 'builds a required, typed, defaulted query parameter' do
+      # 'examples', not 'defaults', is the field Severance's real available_queries catalogue uses
+      # for this (see internal/innie.rb#process_queries) -- confirmed against a real end-to-end run.
       query = {
         'query_id' => 'species_location',
         'summary' => 'geo-coordinates for a species',
         'variables' => ['speciesname'],
         'variable_types' => { 'speciesname' => 'string' },
         'required' => ['speciesname'],
-        'defaults' => { 'speciesname' => 'Arabidopsis thaliana' }
+        'examples' => { 'speciesname' => 'Arabidopsis thaliana' }
       }
 
       doc = described_class.build(queries: [query], base_url: 'http://localhost:4567')

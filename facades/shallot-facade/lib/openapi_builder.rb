@@ -67,14 +67,18 @@ module OpenapiBuilder
 
   def self.parameters_for(query)
     required = query['required'] || []
-    defaults = query['defaults'] || {}
+    # Severance's available_queries catalogue folds a query's #+ defaults: values (and enumerate
+    # values, for a UI dropdown) into 'examples', not a 'defaults' key -- see
+    # internal/innie.rb#process_queries. Confirmed against a real end-to-end run: a 'defaults' key is
+    # never present here, only 'examples'.
+    examples = query['examples'] || {}
     (query['variables'] || []).map do |name|
       {
         'name' => name,
         'in' => 'query',
         'required' => required.include?(name),
         **TYPE_MAP.fetch(query.dig('variable_types', name), TYPE_MAP['string'])
-      }.tap { |param| param['default'] = defaults[name] if defaults.key?(name) }
+      }.tap { |param| param['default'] = examples[name] if examples.key?(name) }
     end
   end
   private_class_method :parameters_for
