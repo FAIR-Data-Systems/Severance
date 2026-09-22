@@ -96,3 +96,18 @@ error JSON::ParserError do
   content_type :json
   { error: 'invalid_json' }.to_json
 end
+
+# Defense in depth: `show_exceptions, :after_handler` above means Sinatra otherwise renders its
+# detailed exception page (full backtrace, file paths, gem versions) for ANY uncaught exception, in
+# every environment -- there is no environment-based fallback once this setting is anything but false.
+# Every route here is meant to have its own explicit rescue around anything that can fail (matching
+# ../../external/outie.rb's convention), but this is the safety net for the mistake of adding a new one
+# that doesn't -- confirmed live: this is exactly the class of bug that leaked a stack trace from
+# GET / before SeveranceClient#available_queries wrapped its own connection-level failures.
+error StandardError do
+  e = env['sinatra.error']
+  warn "shallot-facade: unhandled #{e.class} in #{request.request_method} #{request.path_info}: #{e.message}"
+  status 500
+  content_type :json
+  { error: 'internal_error' }.to_json
+end

@@ -22,7 +22,10 @@ WORKDIR /app
 
 COPY --from=builder /usr/local/bundle /usr/local/bundle
 
-COPY --chown=shallotfacade:shallotfacade VERSION app.rb config.ru ./
+# `bundle exec` needs the Gemfile itself present at runtime (to resolve/activate the already-vendored
+# gems above), not just the vendored gems -- confirmed live: omitting this fails every run with
+# "Could not locate Gemfile", even though /usr/local/bundle has everything bundle install put there.
+COPY --chown=shallotfacade:shallotfacade Gemfile Gemfile.lock VERSION app.rb config.ru ./
 COPY --chown=shallotfacade:shallotfacade lib/ ./lib/
 
 ARG SHALLOT_FACADE_VERSION

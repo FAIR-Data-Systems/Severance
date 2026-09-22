@@ -46,6 +46,14 @@ class SeveranceClient
     JSON.parse(res.body.to_s)
   rescue JSON::ParserError => e
     raise CatalogueFetchFailed, "Severance returned unparseable available_queries: #{e.message}"
+  rescue SystemCallError, SocketError, Timeout::Error => e
+    # A network-level failure to even reach Severance External (connection refused, DNS failure,
+    # timeout -- an ordinary operational condition, not an attack) is wrapped here rather than left to
+    # propagate raw. GET /:query_id already rescues these explicitly around SeveranceClient#query; this
+    # method's only caller, QueryCatalogue#refresh, only ever rescued CatalogueFetchFailed -- an
+    # unwrapped connection error reached Sinatra's uncaught-exception path and leaked a full stack
+    # trace (file paths, gem versions) to the caller on GET / and GET /openapi.json, confirmed live.
+    raise CatalogueFetchFailed, "could not reach Severance at #{@base_url}: #{e.class} #{e.message}"
   end
 
   # @param query_id [String]

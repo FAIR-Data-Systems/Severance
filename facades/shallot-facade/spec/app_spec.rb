@@ -49,6 +49,25 @@ RSpec.describe 'shallot-facade routes' do
     end
   end
 
+  describe 'unhandled exceptions (defense in depth)' do
+    # Regression test: before SeveranceClient#available_queries wrapped connection-level failures,
+    # an unreachable Severance leaked a full stack trace to the caller here -- confirmed live against
+    # a real Docker build (show_exceptions is :after_handler, so Sinatra's detailed exception page
+    # renders for ANY uncaught exception, in every environment, unless something catches it first).
+    # This test forces a *different* unhandled error through GET / (bypassing SeveranceClient's own
+    # wrapping entirely) to prove the generic `error StandardError` handler is the actual backstop,
+    # not just that one call site's fix.
+    it 'never leaks exception details, even for an error no specific rescue anticipates' do
+      allow(SEVERANCE_CLIENT).to receive(:available_queries).and_raise(NoMethodError, "undefined method 'foo'")
+
+      get '/'
+
+      expect(last_response.status).to eq(500)
+      expect(last_response.body).to eq({ error: 'internal_error' }.to_json)
+      expect(last_response.body).not_to include('NoMethodError', 'app.rb', '.rb:')
+    end
+  end
+
   describe 'GET /:query_id' do
     it 'forwards query-string params as Severance bindings and returns the result body/content-type' do
       allow(SEVERANCE_CLIENT).to receive(:available_queries).and_return(

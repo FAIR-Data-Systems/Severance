@@ -46,6 +46,19 @@ RSpec.describe SeveranceClient do
       expect { client.available_queries }.to raise_error(SeveranceClient::CatalogueFetchFailed)
     end
 
+    # Regression test: a connection-level failure (Severance unreachable) previously propagated raw
+    # out of available_queries. QueryCatalogue#refresh only ever rescued CatalogueFetchFailed, so this
+    # reached Sinatra's uncaught-exception path and leaked a full stack trace to the caller on
+    # GET / and GET /openapi.json -- confirmed live against a real Docker build with no Severance
+    # reachable. Every raised class below must be wrapped the same way.
+    [Errno::ECONNREFUSED, SocketError, Timeout::Error].each do |error_class|
+      it "raises CatalogueFetchFailed (not #{error_class}) when Severance is unreachable" do
+        allow(Net::HTTP).to receive(:start).and_raise(error_class, 'connection refused')
+
+        expect { client.available_queries }.to raise_error(SeveranceClient::CatalogueFetchFailed, /connection refused/)
+      end
+    end
+
     it 'sends the Bearer token' do
       captured = nil
       fake_http = instance_double(Net::HTTP)
