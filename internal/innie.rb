@@ -227,13 +227,23 @@ def substitute_grlc_bindings(query, bindings, variable_types = {})
                     end
     warn "Escaped value for #{k}: #{escaped_value}"
 
-    # Match both ?_key_type and ?__key_type
-    pattern = /(?:\?__|\?_)#{Regexp.escape(k.to_s)}_[\w:]+/i
-    query.gsub!(pattern) do |_match|
-      escaped_value
-    end
+    # Match ?_key_type / ?__key_type (the type suffix that drives extract_parameters'
+    # variable_types) AND the bare ?_key / ?__key form with no suffix at all -- GRLC's own dialect for
+    # a parameter declared only via a `#+ parameters:` block (name/type/required/default), which
+    # extract_parameters can't infer a type from inline (see annotation_parser.rb's
+    # fold_parameters_block!). A required end-of-name boundary (\b) stops "speciesname" from also
+    # matching a longer variable like "speciesname2". Missed on the first #+ parameters: fix --
+    # caught only by a real end-to-end run against FLAIR-GG's species_location.rq, whose
+    # `?_speciesname` placeholder has no type suffix: it was silently left unreplaced in the query
+    # sent to the triplestore, an unbound variable, always zero rows, no error anywhere in the chain.
+    pattern = /(?:\?__|\?_)#{Regexp.escape(k.to_s)}(?:_[\w:]+)?\b/i
+    substituted = !query.gsub!(pattern) { escaped_value }.nil?
 
-    warn "→ Substituted ?_#{k}_* → #{escaped_value}"
+    if substituted
+      warn "→ Substituted ?_#{k}_* → #{escaped_value}"
+    else
+      warn "⚠ No ?_#{k}[_type] placeholder found in the query for binding '#{k}' -- nothing substituted"
+    end
   end
   query
 end
@@ -360,6 +370,7 @@ def process_queries
       'tags' => metadata['tags'],
       'variables' => metadata['variables'],
       'variable_types' => metadata['variable_types'],
+      'required' => metadata['required'],
       'examples' => bindings,
       'pagination' => metadata['pagination'],
       'method' => metadata['method'],
@@ -402,9 +413,13 @@ end
 # ============================ MAIN LOOP =================================
 # ========================================================================
 
-# Main polling loop: continuously pull jobs from the external service,
-# execute them against the triplestore, and push results back.
-loop do
+# Guarded so this file can be `require_relative`d (e.g. from a spec) to exercise its method
+# definitions without entering an infinite polling loop -- true both when run normally
+# (`ruby innie.rb`, and the Docker entrypoint's `exec ruby innie.rb`) and when required.
+if __FILE__ == $PROGRAM_NAME
+  # Main polling loop: continuously pull jobs from the external service,
+  # execute them against the triplestore, and push results back.
+  loop do
   # On startup: Push all query metadata to the external service (Outie)
   # so the UI can list available queries and later request them by ID.
   all_queries = process_queries
@@ -576,4 +591,5 @@ loop do
     warn "⚠ Failed to push results for job #{uuid}: #{e.class} - #{e.message}"
   end
   sleep POLL_INTERVAL
+  end
 end
