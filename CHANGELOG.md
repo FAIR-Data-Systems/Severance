@@ -16,11 +16,33 @@ All notable changes to this project are documented here. Format loosely follows 
   CARE-SM-2-specific `Beacon2/facade` (a sibling project, not in this repo), but domain-agnostic, so it
   lives here as a reusable capability of Severance itself. Needs the `before`-filter fix above to reach
   `GET /severance/jobs/:uuid` and `GET /severance/available_queries` at all. See
-  `facades/shallot-facade/README.md`. Not yet tested against a real Severance + Virtuoso instance --
-  only unit-level specs stubbing `SeveranceClient`.
+  `facades/shallot-facade/README.md`. **Verified end to end** against a real Severance External +
+  Internal + Virtuoso instance, using FLAIR-GG's actual `IUCN_categories.rq` and `species_location.rq`
+  unchanged -- see the three "Fixed" entries below, all found only by that run.
 
 ### Fixed
 
+- `external/outie.rb`'s `before` filter also matched `POST /severance/available_queries` (Innie pushing
+  its query catalogue on startup) as a Bearer-gated caller-facing route, after the fix below split its
+  `GET` counterpart out from the internal-IP-only branch. `innie.rb` never sends a Bearer token for this
+  push, so Internal's queries stopped registering with External at all. `POST` to this path is now
+  always IP-gated (Innie's own trust boundary, like `queue/pull` and the result push), while `GET`
+  (a caller reading the catalogue) stays Bearer-gated. Found only by a real end-to-end run --
+  `check_before_filter.rb` extended to cover all three of Innie's own routes explicitly, by method.
+- `internal/innie.rb`'s `substitute_grlc_bindings` required a `_type` suffix on every placeholder
+  (`?_key_type`/`?__key_type`), the same limitation `extract_parameters` had before the fix below it. A
+  parameter declared only via a `#+ parameters:` block, with a bare `?_key` placeholder and no suffix --
+  exactly FLAIR-GG's real `species_location.rq` (`?_speciesname`) -- was silently left unreplaced in the
+  query sent to the triplestore: an unbound SPARQL variable, always zero rows, no error anywhere in the
+  chain. Found only by a real end-to-end run against real data (unit specs for the parser alone didn't
+  catch it); new `internal/spec/innie_spec.rb` covers `substitute_grlc_bindings` directly, now possible
+  since the main polling loop is guarded behind `if __FILE__ == $PROGRAM_NAME` so the file can be
+  required from a spec.
+- `facades/shallot-facade/lib/openapi_builder.rb` looked for a query's parameter defaults under a
+  `defaults` key that Severance's real `available_queries` catalogue never has -- see
+  `internal/innie.rb#process_queries`, which folds `#+ defaults:` (and `#+ enumerate:`) values into
+  `examples` instead. A required, defaulted parameter's OpenAPI `default` was therefore always silently
+  missing. Found only by inspecting the real doc served against a live catalogue.
 - `external/outie.rb`'s `before` filter matched `/severance/jobs/` as a path *prefix* for its
   internal-IP-only branch, which also caught the caller-facing `GET /severance/jobs/:uuid` (polling for
   a result) and `GET /severance/available_queries` -- not just Innie's own
