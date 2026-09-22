@@ -18,6 +18,15 @@ The name comes from the popular TV series [Severance](en.wikipedia.org/wiki/Seve
 * [Installing External](./external/README.md)
 * [Installing Internal](./internal/README.md)
 
+## Facades
+
+A caller that needs Severance's query results in some other API shape (GA4GH Beacon v2, a
+Shallot/GRLC-shaped service, or anything else) doesn't talk to External directly -- it goes through a
+**facade**: a thin translation layer that speaks the external API on one side and only ever calls
+External's own public API (`available_queries`, `queries`, `jobs/:uuid`) on the other. Facades live in
+their own repo, [`FAIR-Data-Systems/Severance-Facades`](https://github.com/FAIR-Data-Systems/Severance-Facades)
+-- see that repo's README for the two existing examples (`shallot-facade`, `beacon-facade`) and a
+"How to implement a new facade" guide if you're building another one.
 
 ## Severed for Security: Users are Outside, Queries stay Inside
 
