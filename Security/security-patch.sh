@@ -164,9 +164,16 @@ patch_image() {
           "${working_tag}" > "${outputfile}"
         ruby "${SCRIPT_DIR}/annotate_gem_shadowing.rb" "${outputfile}" "${build_dir}" >&2 || true
 
-        local branch title
+        local branch title original_branch
         branch="autopatch-gems-${name}-${timestamp}"
         title="Auto-patch Ruby gem CVEs in ${name} (${timestamp})"
+        # `git checkout -b` inside build_dir changes the REPO's checked-out branch, not just this
+        # subshell's -- subshells isolate cwd/variables, never git's on-disk HEAD. For internal/
+        # external/shallot-facade, build_dir is a subdirectory of this very repo, shared across every
+        # patch_image() call in this run -- left unrestored, a later image would build from this new
+        # branch instead of the one the run started on, and the run would leave the caller's own
+        # checkout switched to it. Capture and restore immediately after committing.
+        original_branch=$(cd "${build_dir}" && git rev-parse --abbrev-ref HEAD)
         (cd "${build_dir}" && git checkout -q -b "${branch}" \
           && git add Gemfile Gemfile.lock Dockerfile \
           && git commit -q -m "Auto-patch Ruby gem CVEs in ${name} ($(date +%Y-%m-%d))
@@ -176,7 +183,8 @@ $(echo "${autopatch_log}" | grep '^PATCHED')
 Verified: image builds, ${test_cmd:+tests (\`${test_cmd}\`) pass,} boots correctly, re-scanned.
 Opened automatically by security-patch.sh -- see Security/auto_patch_ruby_gems.rb.
 
-Co-Authored-By: Claude Sonnet 5 <noreply@anthropic.com>") >&2
+Co-Authored-By: Claude Sonnet 5 <noreply@anthropic.com>" \
+          && git checkout -q "${original_branch}") >&2
         echo "${build_dir}|${branch}|${title}" >> "${AUTOPATCH_QUEUE}"
       else
         echo "auto-patch FAILED verification (build:${rebuild_ok} tests:${tests_ok} boot:${boot_ok}) -- reverting, keeping the pre-autopatch scan" >&2
