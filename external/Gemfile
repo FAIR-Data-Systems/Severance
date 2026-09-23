@@ -15,3 +15,5 @@ gem "rack-session", "~> 2.1.2"
 gem "net-imap", "~> 0.5"
 
 gem "json", "~> 2.19"
+gem 'erb', '6.0.7'
+gem 'resolv', '0.8.0'
