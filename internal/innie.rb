@@ -57,18 +57,38 @@ elsif raw_encryption_key_hex == EXAMPLE_ENCRYPTION_KEY_HEX
 end
 ENCRYPTION_KEY = [raw_encryption_key_hex].pack('H*')
 
+# Shared secret Innie presents to External on its three calls (queue/pull,
+# job result push, query catalogue push). External also IP-filters these
+# routes, but an IP address is not an identity (reverse proxies, Docker
+# port-forwarding and rootless Docker can all make remote traffic appear to
+# come from an allow-listed address), so the IP check is defense in depth and
+# this secret is the actual credential. Must be set identically on External and
+# must differ from External's AUTH_TOKEN (the caller-facing token).
+INNIE_TOKEN = ENV['INNIE_TOKEN'].to_s.strip
+if INNIE_TOKEN.length < 32
+  abort 'FATAL: INNIE_TOKEN is not set or is shorter than 32 characters. Generate one with ' \
+        '`openssl rand -hex 32` and set it identically on External and Internal.'
+end
+
+# Adds Innie's credential to an outbound request to External.
+def authorize_for_external(request)
+  request['Authorization'] = "Bearer #{INNIE_TOKEN}"
+  request
+end
+
 # ============== AES-256-GCM helpers ==============
 
 # Encrypts data using AES-256-GCM.
 #
 # @param data [String] Plaintext data to encrypt
+# @param aad [String] Additional authenticated data -- the job UUID
 # @return [String] Encrypted binary data (nonce + tag + ciphertext)
 # Note: This method aggressively attempts to zero out the plaintext data after
 # encryption to minimize in-memory exposure.
 # Warning: While this method tries to reduce the risk of sensitive data lingering in memory,
 # it cannot guarantee complete security due to Ruby's memory management and string immutability.
 # Use with caution and consider additional security measures if handling highly sensitive data.
-def encrypt(data)
+def encrypt(data, aad)
   # Work on a binary copy
   data = data.dup.force_encoding(Encoding::BINARY)
 
@@ -76,6 +96,9 @@ def encrypt(data)
   cipher.encrypt
   cipher.key = ENCRYPTION_KEY
   nonce = cipher.random_iv
+  # Bind the ciphertext to the job it belongs to: a blob encrypted for one job
+  # fails authentication if it is moved into another job's result slot.
+  cipher.auth_data = aad.to_s
   ciphertext = cipher.update(data) + cipher.final
   tag = cipher.auth_tag
 
@@ -90,7 +113,7 @@ end
 # @param encrypted [String] Binary encrypted data (nonce + tag + ciphertext)
 # @return [String] Decrypted plaintext
 # @raise [OpenSSL::Cipher::CipherError] if decryption fails (wrong key, tampered data, etc.)
-def decrypt(encrypted)
+def decrypt(encrypted, aad)
   cipher = OpenSSL::Cipher.new('aes-256-gcm')
   cipher.decrypt
   cipher.key = ENCRYPTION_KEY
@@ -99,6 +122,7 @@ def decrypt(encrypted)
   ct = encrypted[28..]
   cipher.iv = nonce
   cipher.auth_tag = tag
+  cipher.auth_data = aad.to_s
   cipher.update(ct) + cipher.final
 end
 
@@ -113,7 +137,7 @@ end
 # @param plaintext [String] Result body to encrypt and push
 def push_result(uuid, plaintext)
   plaintext = plaintext.dup.force_encoding(Encoding::BINARY)
-  encrypted_result = encrypt(plaintext)
+  encrypted_result = encrypt(plaintext, uuid)
   plaintext.replace("\0" * plaintext.bytesize)
   plaintext.clear
   GC.start(full_mark: true, immediate_sweep: true) if defined?(GC)
@@ -124,6 +148,7 @@ def push_result(uuid, plaintext)
 
   push_req = Net::HTTP::Post.new(push_uri)
   push_req['Content-Type'] = 'application/octet-stream'
+  authorize_for_external(push_req)
   push_req.body = encrypted_result
 
   http.request(push_req)
@@ -394,6 +419,7 @@ def process_queries
     warn "Pushing #{available_queries.size} available queries to #{push_uri.inspect}..."
     push_req = Net::HTTP::Post.new(push_uri)
     push_req['Content-Type'] = 'application/json; charset=utf-8'
+    authorize_for_external(push_req)
     push_req.body = JSON.generate(available_queries)
 
     http = Net::HTTP.new(push_uri.hostname, push_uri.port)
@@ -436,7 +462,7 @@ if __FILE__ == $PROGRAM_NAME
     warn "Polling for new jobs at #{poll_uri.inspect}..."
     http = Net::HTTP.new(poll_uri.hostname, poll_uri.port)
     http.use_ssl = (poll_uri.scheme == 'https')
-    response = http.request(Net::HTTP::Get.new(poll_uri))
+    response = http.request(authorize_for_external(Net::HTTP::Get.new(poll_uri)))
   rescue StandardError => e
     warn "⚠ Failed to poll for jobs: #{e.class} - #{e.message}"
     sleep POLL_INTERVAL
@@ -454,6 +480,13 @@ if __FILE__ == $PROGRAM_NAME
   job = JSON.parse(response.body)
   uuid = job['uuid']
   raise 'No UUID in job response!' unless uuid
+  # Innie interpolates this into a URL path later; never trust the queue side to
+  # have handed back something other than a canonical UUID.
+  unless uuid.to_s.match?(/\A\h{8}-\h{4}-\h{4}-\h{4}-\h{12}\z/)
+    warn 'Ignoring job with malformed uuid'
+    sleep POLL_INTERVAL
+    next
+  end
 
   query_id = job['query_id']
   bindings = job['bindings'] || {}
@@ -484,7 +517,6 @@ if __FILE__ == $PROGRAM_NAME
 
   query = File.read(query_path, encoding: 'UTF-8')
   warn "Found query #{query_id} (#{query_path})"
-  warn "all_queries #{all_queries.inspect}"
 
   # === Bind grlc-style placeholders (?_key_type) ===
   begin
@@ -504,7 +536,7 @@ if __FILE__ == $PROGRAM_NAME
     sleep POLL_INTERVAL
     next
   end
-  warn "Final query after binding:\n#{query}"
+  warn "Query #{query_id} bound (#{bindings.size} binding(s)); values are not logged"
 
   validate_query(query) # currently a no-op, but can be expanded with real validation logic later
 
@@ -560,7 +592,7 @@ if __FILE__ == $PROGRAM_NAME
     # 1. Immediately duplicate the body as BINARY
     plaintext = res.body.dup.force_encoding(Encoding::BINARY)
     # 2. Encrypt our copy immediately
-    encrypted_result = encrypt(plaintext)
+    encrypted_result = encrypt(plaintext, uuid)
 
     # 3. Zero out the ORIGINAL response body inside Net::HTTPResponse
     if res.body
@@ -588,6 +620,7 @@ if __FILE__ == $PROGRAM_NAME
 
     push_req = Net::HTTP::Post.new(push_uri)
     push_req['Content-Type'] = 'application/octet-stream'   # ← changed for binary encrypted data
+    authorize_for_external(push_req)
     push_req.body = encrypted_result                        # binary data, do NOT force_encoding to UTF-8
 
     push_res = http.request(push_req)

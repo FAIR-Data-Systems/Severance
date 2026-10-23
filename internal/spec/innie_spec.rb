@@ -7,6 +7,7 @@ require 'spec_helper'
 # entering the infinite loop. ENCRYPTION_KEY_HEX must be set before the require, or the file aborts
 # the process outright (see innie.rb's own startup check).
 ENV['ENCRYPTION_KEY_HEX'] ||= '1' * 64
+ENV['INNIE_TOKEN'] ||= '2' * 40
 require_relative '../innie'
 
 RSpec.describe '#substitute_grlc_bindings (internal/innie.rb)' do
