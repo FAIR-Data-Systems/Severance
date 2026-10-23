@@ -200,6 +200,9 @@ end
 def substitute_grlc_bindings(query, bindings, variable_types = {})
   return query if bindings.nil? || bindings.empty?
 
+  # Pass 1: validate + escape every binding up front. Nothing is substituted
+  # yet, so a rejected binding leaves the query untouched.
+  escaped = {}
   bindings.each do |k, v|
     next if v.nil?
 
@@ -207,43 +210,47 @@ def substitute_grlc_bindings(query, bindings, variable_types = {})
       raise InvalidEncodingError, "Binding '#{k}' contains a byte sequence that is not valid UTF-8 (rejected, not substituted)"
     end
 
-    warn "Processing binding: #{k} => #{v.inspect}"
-    warn "Variable types for #{k}: #{variable_types[k.to_s]}"
-    # Determine if this variable is declared as iri
     is_iri = variable_types[k.to_s]&.downcase == 'iri'
-    warn "Variable '#{k}' is declared as IRI: #{is_iri}"
-    escaped_value = if is_iri
-                      stripped = v.to_s.strip
-                      # Un-wrap a caller-supplied <...> so we validate the
-                      # actual IRI content either way, not the brackets.
-                      bare = stripped.start_with?('<') && stripped.end_with?('>') ? stripped[1..-2] : stripped
-                      unless valid_iriref?(bare)
-                        raise InvalidIriError, "Binding '#{k}' declared as iri contains a character " \
-                                                'not permitted inside a SPARQL IRIREF (rejected, not substituted)'
-                      end
-                      "<#{bare}>"
-                    else
-                      escape_for_sparql(v)
-                    end
-    warn "Escaped value for #{k}: #{escaped_value}"
+    escaped[k.to_s.downcase] ||= if is_iri
+                                   stripped = v.to_s.strip
+                                   # Un-wrap a caller-supplied <...> so we validate the
+                                   # actual IRI content either way, not the brackets.
+                                   bare = stripped.start_with?('<') && stripped.end_with?('>') ? stripped[1..-2] : stripped
+                                   unless valid_iriref?(bare)
+                                     raise InvalidIriError, "Binding '#{k}' declared as iri contains a character " \
+                                                             'not permitted inside a SPARQL IRIREF (rejected, not substituted)'
+                                   end
+                                   "<#{bare}>"
+                                 else
+                                   escape_for_sparql(v)
+                                 end
+  end
+  return query if escaped.empty?
 
-    # Match ?_key_type / ?__key_type (the type suffix that drives extract_parameters'
-    # variable_types) AND the bare ?_key / ?__key form with no suffix at all -- GRLC's own dialect for
-    # a parameter declared only via a `#+ parameters:` block (name/type/required/default), which
-    # extract_parameters can't infer a type from inline (see annotation_parser.rb's
-    # fold_parameters_block!). A required end-of-name boundary (\b) stops "speciesname" from also
-    # matching a longer variable like "speciesname2". Missed on the first #+ parameters: fix --
-    # caught only by a real end-to-end run against FLAIR-GG's species_location.rq, whose
-    # `?_speciesname` placeholder has no type suffix: it was silently left unreplaced in the query
-    # sent to the triplestore, an unbound variable, always zero rows, no error anywhere in the chain.
-    pattern = /(?:\?__|\?_)#{Regexp.escape(k.to_s)}(?:_[\w:]+)?\b/i
-    substituted = !query.gsub!(pattern) { escaped_value }.nil?
+  # Pass 2: ONE scan over the ORIGINAL query text, replacing every placeholder
+  # with its escaped value in a single gsub. Substituting binding-by-binding
+  # (the previous behaviour) re-scanned text that earlier bindings had already
+  # inserted, so a caller-supplied value containing e.g. `?_other_string` was
+  # itself treated as a placeholder and rewritten with another binding's
+  # quoted value -- letting that value's opening quote close the first literal
+  # and the rest land in the query as raw SPARQL. Here, replacement text is
+  # never rescanned.
+  #
+  # Matches ?_key_type / ?__key_type AND the bare ?_key / ?__key form (GRLC's
+  # `#+ parameters:` dialect). Longest keys first so `speciesname2` is never
+  # shadowed by `speciesname`; the trailing \b keeps a key from matching a
+  # longer variable name.
+  alternation = escaped.keys.sort_by { |k| -k.length }.map { |k| Regexp.escape(k) }.join('|')
+  pattern = /(?:\?__|\?_)(#{alternation})(?:_[\w:]+)?\b/i
+  used = []
+  query = query.gsub(pattern) do
+    key = Regexp.last_match(1).downcase
+    used << key
+    escaped[key]
+  end
 
-    if substituted
-      warn "→ Substituted ?_#{k}_* → #{escaped_value}"
-    else
-      warn "⚠ No ?_#{k}[_type] placeholder found in the query for binding '#{k}' -- nothing substituted"
-    end
+  (escaped.keys - used).each do |k|
+    warn "⚠ No ?_#{k}[_type] placeholder found in the query for binding '#{k}' -- nothing substituted"
   end
   query
 end
