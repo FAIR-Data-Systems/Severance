@@ -283,12 +283,23 @@ end
 # or the caller-supplied header -- the latter could itself be a leaked valid
 # token from elsewhere, and container logs have a wider audience than anyone
 # who should know the token.
-def require_bearer!(expected)
+#
+# `throttle: false` is for Innie's own routes. Without it, Innie shared its
+# failure bucket with the public routes, keyed on `request.ip` -- which Rack
+# takes from X-Forwarded-For whenever the TCP peer is a private address (Docker's
+# userland proxy, a reverse proxy, any LAN host). Ten bad-token requests to a
+# public route claiming Innie's address then 429'd Innie's own polls, repeatable
+# every AUTH_FAIL_WINDOW: a one-request-per-6-seconds stop of the whole pipeline.
+# Innie's routes are already IP-filtered and need a >= 32-char random secret, so
+# online guessing there is not a real risk worth that lockout.
+def require_bearer!(expected, throttle: true)
   ip = request.ip
-  halt 429, { 'Retry-After' => AUTH_FAIL_WINDOW.to_s }, 'Too many failed attempts' if auth_throttled?(ip)
+  if throttle && auth_throttled?(ip)
+    halt 429, { 'Retry-After' => AUTH_FAIL_WINDOW.to_s }, 'Too many failed attempts'
+  end
   return if bearer_ok?(request.env['HTTP_AUTHORIZATION'], expected)
 
-  record_auth_failure(ip)
+  record_auth_failure(ip) if throttle
   state = request.env['HTTP_AUTHORIZATION'] ? 'present but did not match' : 'missing'
   warn "Auth failed from #{ip}: Authorization header #{state}"
   halt 401, 'Unauthorized'
@@ -320,7 +331,7 @@ before do
     allowed_entries = (ENV['ALLOWED_INTERNAL_IPS'] || '127.0.0.1,::1,localhost').split(',').map(&:strip)
     client_ip = request.ip
     halt 403, 'Access denied' unless allowed_entries.any? { |entry| internal_ip_allowed?(entry, client_ip) }
-    require_bearer!(INNIE_TOKEN)
+    require_bearer!(INNIE_TOKEN, throttle: false)
   else
     require_bearer!(AUTH_TOKEN)
   end

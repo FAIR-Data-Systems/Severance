@@ -15,7 +15,8 @@ require 'fileutils'
 require 'json'
 
 ENV['ENCRYPTION_KEY_HEX'] = '1' * 64
-ENV['AUTH_TOKEN'] = 'test-token'
+ENV['AUTH_TOKEN'] = 'a' * 40   # outie.rb refuses to start with a token shorter than 32 characters
+ENV['INNIE_TOKEN'] = 'b' * 40  # ...and requires a separate one for Innie's own routes
 ENV['ALLOWED_INTERNAL_IPS'] = '203.0.113.0/24'
 scratch = Dir.mktmpdir('severance-before-filter-check')
 ENV['QUEUE_DIR'] = File.join(scratch, 'queue')
@@ -36,6 +37,7 @@ def env_for(ip, headers = {})
 end
 
 bearer = { 'HTTP_AUTHORIZATION' => "Bearer #{ENV.fetch('AUTH_TOKEN')}" }
+innie_bearer = { 'HTTP_AUTHORIZATION' => "Bearer #{ENV.fetch('INNIE_TOKEN')}" }
 
 failures = []
 
@@ -60,27 +62,37 @@ check(failures, '[external IP, Bearer] POST /severance/jobs/:uuid/result (should
       app.post('/severance/jobs/does-not-exist/result', env_for(EXTERNAL_IP, bearer).merge(result_post_opts)),
       [403])
 
-# A caller on an INTERNAL IP with no Bearer token at all must be able to reach Innie's own routes...
-check(failures, '[internal IP, no Bearer] GET /severance/queue/pull',
-      app.get('/severance/queue/pull', env_for(INTERNAL_IP)), [204])
-check(failures, '[internal IP, no Bearer] POST /severance/jobs/:uuid/result',
-      app.post('/severance/jobs/does-not-exist/result', env_for(INTERNAL_IP).merge(result_post_opts)),
+# A caller on an INTERNAL IP presenting INNIE_TOKEN must be able to reach Innie's own routes...
+job_uuid = SecureRandom.uuid # the result route now rejects anything that isn't a canonical UUID
+check(failures, '[internal IP, Innie Bearer] GET /severance/queue/pull',
+      app.get('/severance/queue/pull', env_for(INTERNAL_IP, innie_bearer)), [204])
+check(failures, '[internal IP, Innie Bearer] POST /severance/jobs/:uuid/result',
+      app.post("/severance/jobs/#{job_uuid}/result", env_for(INTERNAL_IP, innie_bearer).merge(result_post_opts)),
       [200])
 
+# ...but being on an allowed IP is no longer enough on its own (an IP address is not an identity):
+# no token, or the callers' AUTH_TOKEN instead of INNIE_TOKEN, gets 401.
+check(failures, '[internal IP, no Bearer] GET /severance/queue/pull (needs INNIE_TOKEN)',
+      app.get('/severance/queue/pull', env_for(INTERNAL_IP)), [401])
+check(failures, '[internal IP, caller Bearer] GET /severance/queue/pull (needs INNIE_TOKEN, not AUTH_TOKEN)',
+      app.get('/severance/queue/pull', env_for(INTERNAL_IP, bearer)), [401])
+
 # POST /severance/available_queries (Innie pushing its catalogue) shares its path with the
-# caller-facing GET of the same name, but is itself an Innie-only route (innie.rb never sends a
-# Bearer token for this push) -- missed by the first before-filter fix above, caught only by a real
-# end-to-end run (see CLAUDE_SESSION_HANDOFF_2026-09-22.md), so covered explicitly here.
+# caller-facing GET of the same name, but is itself an Innie-only route -- missed by the first
+# before-filter fix above, caught only by a real end-to-end run (see
+# CLAUDE_SESSION_HANDOFF_2026-09-22.md), so covered explicitly here.
 available_queries_post_opts = { input: '[]', 'CONTENT_TYPE' => 'application/json' }
-check(failures, '[internal IP, no Bearer] POST /severance/available_queries',
-      app.post('/severance/available_queries', env_for(INTERNAL_IP).merge(available_queries_post_opts)),
+check(failures, '[internal IP, Innie Bearer] POST /severance/available_queries',
+      app.post('/severance/available_queries', env_for(INTERNAL_IP, innie_bearer).merge(available_queries_post_opts)),
       [200])
+check(failures, '[internal IP, no Bearer] POST /severance/available_queries (needs INNIE_TOKEN)',
+      app.post('/severance/available_queries', env_for(INTERNAL_IP).merge(available_queries_post_opts)),
+      [401])
 check(failures, '[external IP, Bearer] POST /severance/available_queries (should be internal-IP only)',
       app.post('/severance/available_queries', env_for(EXTERNAL_IP, bearer).merge(available_queries_post_opts)),
       [403])
-# Unlike the caller-facing GET/jobs routes, a POST here is *always* IP-gated (never falls through to
-# the Bearer check, since Innie never sends one) -- so a non-internal caller gets 403 regardless of
-# whether it presents a Bearer token, not 401.
+# Unlike the caller-facing GET/jobs routes, the IP check on Innie's routes runs *before* the token
+# check -- so a non-internal caller gets 403 regardless of what token it presents, not 401.
 check(failures, '[external IP, no auth] POST /severance/available_queries',
       app.post('/severance/available_queries', env_for(EXTERNAL_IP).merge(available_queries_post_opts)),
       [403])

@@ -115,6 +115,19 @@ RSpec.describe 'External (outie.rb) hardening' do
       get '/severance', {}, innie
       expect(last_response.status).to eq(401)
     end
+
+    it 'cannot be locked out by failed caller logins that spoof Innie\'s address' do
+      # The TCP peer is a private address (Docker gateway / proxy), so Rack trusts X-Forwarded-For.
+      spoofer = { 'REMOTE_ADDR' => '172.17.0.1', 'HTTP_X_FORWARDED_FOR' => '10.1.2.77',
+                  'HTTP_AUTHORIZATION' => 'Bearer wrong' }
+      AUTH_FAIL_LIMIT.times { get '/severance', {}, spoofer }
+      expect(last_response.status).to eq(401)
+      get '/severance', {}, spoofer
+      expect(last_response.status).to eq(429) # the public route is throttled for that address...
+
+      get '/severance/queue/pull', {}, innie.merge('REMOTE_ADDR' => '10.1.2.77')
+      expect(last_response.status).to eq(204) # ...but Innie's poll is not
+    end
   end
 
   describe 'input validation' do
