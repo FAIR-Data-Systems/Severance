@@ -1,6 +1,8 @@
 ENCRYPTION_KEY_HEX=0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef   # 64 hex chars = 32 bytes (generate with: openssl rand -hex 32)
 RESULT_FORMAT=csv  # must be the same as the External component!
 QUERY_DIR=/queries  # DO NOT CHANGE THIS unless you really know what you're doing
+# REQUIRED. Must equal INNIE_TOKEN in external/.env (>= 32 chars). Generate: openssl rand -hex 32
+INNIE_TOKEN=
 EXTERNAL_URL=http://localhost:3000   # The URL to the External API. 
 TRIPLESTORE_URL=http://localhost:8890/sparql-auth  # Virtuoso's Digest-authenticated SPARQL endpoint -- make sure you create the readonly user
 TRIPLESTORE_USER = <your Virtuoso read-only username>

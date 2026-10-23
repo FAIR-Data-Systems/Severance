@@ -4,6 +4,21 @@ All notable changes to this project are documented here. Format loosely follows 
 
 ## [Unreleased]
 
+### Security
+
+- Query bindings are now substituted in a single pass over the original query text.
+- Internal authenticates its calls to External with a new required `INNIE_TOKEN` (in addition to the
+  `ALLOWED_INTERNAL_IPS` filter). **Breaking:** set `INNIE_TOKEN` in both `.env` files.
+- `AUTH_TOKEN` is now required (>= 32 characters); External no longer starts with authentication disabled
+  or with the example value. Token comparison is constant-time and case-sensitive; repeated failures from one
+  IP are throttled (`AUTH_FAIL_LIMIT`, `AUTH_FAIL_WINDOW`).
+- Results are encrypted with the job UUID as authenticated data. **Breaking:** drain the queue and delete any
+  uncollected `*.enc` results before upgrading.
+- Job ids are validated as UUIDs; request/result sizes and the pending queue length are capped
+  (`MAX_REQUEST_BYTES`, `MAX_CATALOG_BYTES`, `MAX_RESULT_BYTES`, `MAX_PENDING_JOBS`).
+- Binding values and bound query text are no longer written to logs.
+- `.env` files and runtime data directories are git-ignored.
+
 ## [1.1.0] - 2026-09-22
 
 ### Changed

@@ -32,14 +32,18 @@ Keep that in mind while you read the rest of this file.
     QUERY_DIR=/queries   # DO NOT CHANGE THIS unless you really know what you're doing
     QUEUE_DIR=/data/queue  # DO NOT CHANGE THIS unless you really know what you're doing
     RESULTS_DIR=/data/results  # DO NOT CHANGE THIS unless you really know what you're doing
-    AUTH_TOKEN=YesItsMe
+    AUTH_TOKEN=<output of: openssl rand -hex 32>
+    INNIE_TOKEN=<a different output of: openssl rand -hex 32>
     ALLOWED_INTERNAL_IPS=172.31.0.1,127.0.0.1,::1,192.168.1.100   # CHANGE 192.168.1.100 to the IP of Internal 
     METADATA_DIR=/queries-metadata  # Don't change this unless you know what you're doing
 
 - **`ENCRYPTION_KEY_HEX`** -- generate your own with `openssl rand -hex 32`. **DO NOT leave the
   placeholder text in place** -- both External and Internal refuse to start if you do. This exact same
   key **must** also be set on Internal, or nothing will decrypt correctly.
-- **`AUTH_TOKEN`** -- your callers' shared secret. Anyone who has it can call your service. See the
+- **`INNIE_TOKEN`** -- the secret Internal presents to External on its three calls (pull a job, push a
+  result, register the query catalogue). Required, >= 32 characters, different from `AUTH_TOKEN`, and set
+  identically in `internal/.env`. `ALLOWED_INTERNAL_IPS` is an additional filter, not a replacement.
+- **`AUTH_TOKEN`** -- your callers' shared secret. Required (>= 32 characters); External refuses to start without it. Anyone who has it can call your service. See the
   warning below for what this does and does not protect against.
 - **`ALLOWED_INTERNAL_IPS`** -- a whitelist of addresses allowed to reach the parts of the API that
   don't require an Auth token (this is how Internal talks to External). Each entry can be a bare IP

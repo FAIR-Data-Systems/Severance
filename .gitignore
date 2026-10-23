@@ -15,7 +15,10 @@ Security/INTERNAL_NOTES.md
 /tmp/
 
 # Used by dotenv library to load environment variables.
-# .env
+# Never commit real credentials or runtime data (env_template files are the tracked examples).
+.env
+**/.env
+external/data/
 
 # Ignore Byebug command history file.
 .byebug_history
