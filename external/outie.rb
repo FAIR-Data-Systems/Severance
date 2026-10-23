@@ -60,7 +60,6 @@ warn '=== Environment Debug ==='
 warn "QUEUE_DIR = #{QUEUE_DIR.inspect}"
 warn "RESULTS_DIR = #{RESULTS_DIR.inspect}"
 warn "ENCRYPTION_KEY_HEX present = #{ENV['ENCRYPTION_KEY_HEX'] ? 'YES' : 'NO'}"
-warn "AUTH_TOKEN = #{ENV['AUTH_TOKEN'] ? '*** (present)' : 'NOT SET'}"
 warn "RESULT_FORMAT = #{ENV['RESULT_FORMAT'].inspect}"
 warn '========================='
 
@@ -108,6 +107,44 @@ elsif raw_encryption_key_hex == EXAMPLE_ENCRYPTION_KEY_HEX
 end
 ENCRYPTION_KEY = [raw_encryption_key_hex].pack('H*')
 
+# ============== Credentials: fail closed ==============
+#
+# Two distinct bearer secrets:
+#   AUTH_TOKEN  -- presented by callers/facades on the public API.
+#   INNIE_TOKEN -- presented only by Internal on its three calls
+#                  (queue/pull, job result push, query catalogue push).
+# Both are mandatory. Previously, an unset AUTH_TOKEN silently disabled
+# authentication on the whole public API, and the shipped example value was
+# accepted as-is; refusing to start is the same behaviour used for the
+# encryption key above.
+MIN_SECRET_LENGTH = 32
+EXAMPLE_SECRETS = %w[YesItsMe changeme change-me secret password].freeze
+
+def load_secret!(name)
+  value = ENV[name].to_s.strip
+  if value.empty?
+    abort "FATAL: #{name} is not set. Generate one with `openssl rand -hex 32` -- " \
+          'refusing to start with authentication disabled.'
+  end
+  if value.length < MIN_SECRET_LENGTH || EXAMPLE_SECRETS.include?(value)
+    abort "FATAL: #{name} is too short or is an example value. Generate one with " \
+          "`openssl rand -hex 32` (minimum #{MIN_SECRET_LENGTH} characters)."
+  end
+  value
+end
+
+AUTH_TOKEN = load_secret!('AUTH_TOKEN')
+INNIE_TOKEN = load_secret!('INNIE_TOKEN')
+abort 'FATAL: INNIE_TOKEN must differ from AUTH_TOKEN.' if AUTH_TOKEN == INNIE_TOKEN
+
+# Hard limits (bytes / counts); override via environment if a deployment needs more.
+MAX_REQUEST_BYTES  = ENV.fetch('MAX_REQUEST_BYTES', 64 * 1024).to_i          # POST /severance/queries
+MAX_CATALOG_BYTES  = ENV.fetch('MAX_CATALOG_BYTES', 2 * 1024 * 1024).to_i    # POST /severance/available_queries
+MAX_RESULT_BYTES   = ENV.fetch('MAX_RESULT_BYTES', 256 * 1024 * 1024).to_i   # POST /severance/jobs/:uuid/result
+MAX_PENDING_JOBS   = ENV.fetch('MAX_PENDING_JOBS', 1000).to_i
+
+UUID_RE = /\A\h{8}-\h{4}-\h{4}-\h{4}-\h{12}\z/.freeze
+
 # Content-Type for query results (json or csv)
 CONTENT_TYPE = ENV['RESULT_FORMAT'] == 'csv' ? 'text/csv' : 'application/sparql-results+json'
 
@@ -127,11 +164,12 @@ end
 #
 # @param data [String] Plaintext data to encrypt
 # @return [String] Encrypted binary data (nonce + tag + ciphertext)
-def encrypt(data)
+def encrypt(data, aad)
   cipher = OpenSSL::Cipher.new('aes-256-gcm')
   cipher.encrypt
   cipher.key = ENCRYPTION_KEY
   nonce = cipher.random_iv
+  cipher.auth_data = aad.to_s
   ciphertext = cipher.update(data) + cipher.final
   tag = cipher.auth_tag
   nonce + tag + ciphertext
@@ -140,9 +178,10 @@ end
 # Decrypts data previously encrypted with {#encrypt}.
 #
 # @param encrypted [String] Binary encrypted data (nonce + tag + ciphertext)
+# @param aad [String] Additional authenticated data -- the job UUID the blob must belong to
 # @return [String] Decrypted plaintext
 # @raise [OpenSSL::Cipher::CipherError] if decryption fails (wrong key, tampered data, etc.)
-def decrypt(encrypted)
+def decrypt(encrypted, aad)
   cipher = OpenSSL::Cipher.new('aes-256-gcm')
   cipher.decrypt
   cipher.key = ENCRYPTION_KEY
@@ -151,6 +190,7 @@ def decrypt(encrypted)
   ct = encrypted[28..]
   cipher.iv = nonce
   cipher.auth_tag = tag
+  cipher.auth_data = aad.to_s
   cipher.update(ct) + cipher.final
 end
 
@@ -164,13 +204,15 @@ end
 # handler below) -- from an API consumer's perspective a body that isn't
 # valid UTF-8 is just as malformed as one that isn't valid JSON syntax.
 class InvalidBodyEncodingError < StandardError; end
+class PayloadTooLargeError < StandardError; end
 
 # Reads and returns `request.body`, raising InvalidBodyEncodingError if it
 # is not valid UTF-8. Call this before JSON.parse-ing a request body so the
 # malformed-encoding case is rejected up front, not discovered later by
 # whichever string method happens to touch the bad bytes first.
-def read_utf8_body!
-  raw = request.body.read
+def read_utf8_body!(limit = MAX_REQUEST_BYTES)
+  raw = request.body.read(limit + 1) || ''
+  raise PayloadTooLargeError if raw.bytesize > limit
   raise InvalidBodyEncodingError unless raw.dup.force_encoding(Encoding::UTF_8).valid_encoding?
 
   raw
@@ -197,57 +239,93 @@ rescue ArgumentError => e
   false
 end
 
+# Constant-time check of an `Authorization: Bearer <token>` header. The scheme
+# is matched case-insensitively (RFC 7235); the token itself is matched exactly,
+# and both sides are hashed first so neither length nor content leaks via timing.
+def bearer_ok?(header, expected)
+  return false unless header
+
+  scheme, token = header.split(' ', 2)
+  return false unless scheme&.casecmp?('Bearer') && token
+
+  Rack::Utils.secure_compare(OpenSSL::Digest::SHA256.digest(token),
+                             OpenSSL::Digest::SHA256.digest(expected))
+end
+
+# Minimal in-process throttle on FAILED authentication, per client IP: after
+# AUTH_FAIL_LIMIT failures within AUTH_FAIL_WINDOW seconds, further requests from
+# that IP get 429 until the window passes. (Behind a reverse proxy, make sure
+# the proxy forwards the real client address -- otherwise all callers share one
+# bucket.) Not a substitute for rate limiting at the proxy, but it removes the
+# "unlimited online guessing" case without adding a dependency.
+AUTH_FAIL_LIMIT  = ENV.fetch('AUTH_FAIL_LIMIT', 10).to_i
+AUTH_FAIL_WINDOW = ENV.fetch('AUTH_FAIL_WINDOW', 60).to_i
+AUTH_FAILURES = {}
+AUTH_FAILURES_LOCK = Mutex.new
+
+def auth_throttled?(ip)
+  AUTH_FAILURES_LOCK.synchronize do
+    cutoff = Time.now.to_f - AUTH_FAIL_WINDOW
+    stamps = (AUTH_FAILURES[ip] || []).select { |t| t > cutoff }
+    AUTH_FAILURES[ip] = stamps
+    stamps.size >= AUTH_FAIL_LIMIT
+  end
+end
+
+def record_auth_failure(ip)
+  AUTH_FAILURES_LOCK.synchronize do
+    AUTH_FAILURES.clear if AUTH_FAILURES.size > 10_000 # bound memory under address-spraying
+    (AUTH_FAILURES[ip] ||= []) << Time.now.to_f
+  end
+end
+
+# Requires a valid bearer token (or halts 401/429). Never logs the expected token
+# or the caller-supplied header -- the latter could itself be a leaked valid
+# token from elsewhere, and container logs have a wider audience than anyone
+# who should know the token.
+def require_bearer!(expected)
+  ip = request.ip
+  halt 429, { 'Retry-After' => AUTH_FAIL_WINDOW.to_s }, 'Too many failed attempts' if auth_throttled?(ip)
+  return if bearer_ok?(request.env['HTTP_AUTHORIZATION'], expected)
+
+  record_auth_failure(ip)
+  state = request.env['HTTP_AUTHORIZATION'] ? 'present but did not match' : 'missing'
+  warn "Auth failed from #{ip}: Authorization header #{state}"
+  halt 401, 'Unauthorized'
+end
+
 # Security filter applied to every request.
 #
-# - Internal endpoints, used only by Innie itself, are only accessible from whitelisted IPs (default:
-#   localhost): `GET /severance/queue/pull` (pull the next job), `POST /severance/jobs/:uuid/result`
-#   (push a finished one back), and `POST /severance/available_queries` (push the current query
-#   catalogue -- innie.rb never sends a Bearer token for this, by design, the same trust boundary as
-#   its other two calls). Each ALLOWED_INTERNAL_IPS entry may be a bare IP or a CIDR range.
-# - Every other endpoint, including the caller-facing `GET /severance/jobs/:uuid` (polling for a
-#   result) and `GET /severance/available_queries` (reading the catalogue -- same path as Innie's push
-#   above, but a different verb and a different caller), requires a valid `Bearer` token if
-#   `AUTH_TOKEN` is set -- exactly as documented in external/README.md's own curl examples.
-#   NOTE: an earlier version of this filter matched `/severance/jobs/` and `/severance/available_queries`
-#   as path *prefixes* regardless of HTTP method, which also caught the caller-facing GET routes and
-#   made them unreachable for any external Bearer-authenticated caller (403 unless that caller also
-#   happened to be on an allowlisted IP). A first fix (2026-09-22) corrected `/severance/jobs/` but
-#   missed that `/severance/available_queries` needs the identical GET-vs-POST split -- caught only by
-#   a real end-to-end run (Innie's queries never got registered, no unit-level check exercised the push
-#   route) -- fixed here by matching each of Innie's three routes exactly, by method, instead of by path
-#   prefix alone.
+# - The three routes used only by Innie -- `GET /severance/queue/pull`,
+#   `POST /severance/jobs/:uuid/result`, `POST /severance/available_queries` --
+#   require BOTH an allow-listed client IP (ALLOWED_INTERNAL_IPS; each entry a
+#   bare IP or CIDR) AND `Authorization: Bearer <INNIE_TOKEN>`. The IP check is
+#   defense in depth only: a source address is not an identity.
+# - Every other endpoint requires `Authorization: Bearer <AUTH_TOKEN>`.
+# - Each route is matched exactly by method + path, never by path prefix alone
+#   (a prefix match once made the caller-facing GET routes unreachable).
+# - Oversized requests are refused up front by declared Content-Length; bodies are
+#   additionally read with a hard cap where they are consumed.
 before do
-  # === Internal calls from Innie (no auth required) ===
   is_internal_get = request.request_method == 'GET' && request.path_info == '/severance/queue/pull'
-  is_internal_post = request.request_method == 'POST' &&
-                      (request.path_info == '/severance/available_queries' ||
-                       request.path_info =~ %r{\A/severance/jobs/[^/]+/result\z})
-  if is_internal_get || is_internal_post
+  is_result_post = request.request_method == 'POST' && request.path_info =~ %r{\A/severance/jobs/[^/]+/result\z}
+  is_catalog_post = request.request_method == 'POST' && request.path_info == '/severance/available_queries'
+
+  limit = if is_result_post then MAX_RESULT_BYTES
+          elsif is_catalog_post then MAX_CATALOG_BYTES
+          else MAX_REQUEST_BYTES
+          end
+
+  if is_internal_get || is_result_post || is_catalog_post
     allowed_entries = (ENV['ALLOWED_INTERNAL_IPS'] || '127.0.0.1,::1,localhost').split(',').map(&:strip)
     client_ip = request.ip
-    is_allowed = allowed_entries.any? { |entry| internal_ip_allowed?(entry, client_ip) }
-    halt 403, "Access denied from #{client_ip} - internal IP required" unless is_allowed
-    # Internal call → bypass Bearer token check
-    return
+    halt 403, 'Access denied' unless allowed_entries.any? { |entry| internal_ip_allowed?(entry, client_ip) }
+    require_bearer!(INNIE_TOKEN)
+  else
+    require_bearer!(AUTH_TOKEN)
   end
 
-  # === External/user-facing calls - require Bearer token ===
-  if ENV['AUTH_TOKEN']
-    auth_header = request.env['HTTP_AUTHORIZATION']
-    expected = "Bearer #{ENV['AUTH_TOKEN']}"
-    unless auth_header && auth_header.casecmp?(expected)
-      # Never log the real AUTH_TOKEN (`expected`) or the caller-supplied
-      # header -- the latter could itself be a leaked/guessed valid token
-      # from elsewhere, and logging either one turns every failed auth
-      # attempt into a cleartext secret sitting in container logs, readable
-      # by anyone with `docker logs` access (a much wider audience than
-      # anyone who should know the token). Presence/absence and the
-      # caller's IP are enough to operate on without that exposure.
-      state = auth_header ? 'present but did not match' : 'missing'
-      warn "Auth failed from #{request.ip}: Authorization header #{state}"
-      halt 401, 'Unauthorized'
-    end
-  end
+  halt 413, { error: 'payload_too_large' }.to_json if request.content_length.to_i > limit
 end
 
 # Submits a new query job for asynchronous execution.
@@ -281,17 +359,27 @@ post '/severance/queries' do
     halt 400, { error: 'query_id contains invalid characters' }.to_json
   end
 
+  bindings = data['bindings'] || {}
+  halt 400, { error: 'bindings must be an object' }.to_json unless bindings.is_a?(Hash)
+
+  # Bound the queue: refuse new work rather than let disk usage grow without limit.
+  if Dir["#{QUEUE_DIR}/*.pending.json"].size >= MAX_PENDING_JOBS
+    halt 429, { 'Retry-After' => '60' }, { error: 'queue_full' }.to_json
+  end
+
   uuid = SecureRandom.uuid
   job = {
     'query_id' => query_id.to_s.strip,
-    'bindings' => (data.is_a?(Hash) ? data['bindings'] || {} : {}),
+    'bindings' => bindings,
     'submitted_at' => Time.now.to_i
   }
 
   File.write("#{QUEUE_DIR}/#{uuid}.pending.json", JSON.generate(job))
 
   status 201
-  headers 'Location' => "#{request.base_url}/severance/jobs/#{uuid}"
+  # PUBLIC_BASE_URL (if set) is used instead of the request's Host header, which
+  # HostAuthorization no longer vets (see top of file).
+  headers 'Location' => "#{(ENV['PUBLIC_BASE_URL'] || request.base_url).chomp('/')}/severance/jobs/#{uuid}"
   body ''
 end
 
@@ -303,12 +391,11 @@ end
 # @return [400] if JSON is invalid
 # @return [500] on other errors
 post '/severance/available_queries' do
-  queries = JSON.parse(read_utf8_body!)
+  queries = JSON.parse(read_utf8_body!(MAX_CATALOG_BYTES))
   metadata_dir = ENV.fetch('METADATA_DIR', '/queries-metadata')
   warn "Metadata directory for available queries: #{metadata_dir}"
   active_queries_path = "#{metadata_dir}/active_queries.json"
   begin
-    warn 'I Am', `whoami`
     File.write(active_queries_path, JSON.pretty_generate(queries))
   rescue Errno::EACCES => e
     warn "❌ Permission error writing available queries: #{e.message}"
@@ -319,6 +406,10 @@ post '/severance/available_queries' do
   status 200
   content_type 'application/json'
   body({ success: true, count: queries.size }.to_json)
+rescue PayloadTooLargeError
+  status 413
+  content_type 'application/json'
+  body({ error: 'payload_too_large' }.to_json)
 rescue JSON::ParserError, InvalidBodyEncodingError => e
   warn "❌ Invalid JSON in /available_queries: #{e.message}"
   status 400
@@ -355,6 +446,8 @@ end
 # @return [200] with result (and deletes files) if completed
 # @return [404] if job not found
 get '/severance/jobs/:uuid' do |uuid|
+  halt 404, '{"error":"not found"}' unless uuid.match?(UUID_RE)
+
   pending     = "#{QUEUE_DIR}/#{uuid}.pending.json"
   processing  = "#{QUEUE_DIR}/#{uuid}.processing.json"
   result_file = "#{RESULTS_DIR}/#{uuid}.enc"
@@ -371,7 +464,7 @@ get '/severance/jobs/:uuid' do |uuid|
       encrypted = File.binread(result_file)
 
       # Decrypt
-      plaintext = decrypt(encrypted)
+      plaintext = decrypt(encrypted, uuid)
 
       # Hand plaintext to ZeroingBody, which yields it to Puma then zeros
       # it in close — called by Rack after the last byte hits the socket.
@@ -412,10 +505,13 @@ end
 #
 # @param uuid [String] Job UUID
 post '/severance/jobs/:uuid/result' do |uuid|
-  # Read the incoming encrypted payload as raw binary
-  encrypted_data = request.body.read.force_encoding(Encoding::BINARY)
+  halt 400, 'Invalid job id' unless uuid.match?(UUID_RE)
+
+  # Read the incoming encrypted payload as raw binary, with a hard size cap
+  encrypted_data = (request.body.read(MAX_RESULT_BYTES + 1) || '').force_encoding(Encoding::BINARY)
+  halt 413, 'Result too large' if encrypted_data.bytesize > MAX_RESULT_BYTES
   if encrypted_data.empty? || encrypted_data.bytesize < 28 # minimum size for AES-GCM (nonce+tag+ciphertext)
-    halt 400, 'Invalid or empty result data. Shutting down to prevent potential abuse.'
+    halt 400, 'Invalid or empty result data'
   end
 
   result_file = "#{RESULTS_DIR}/#{uuid}.enc"
@@ -477,6 +573,12 @@ end
 # validate encoding) and crash later -- with a full stack trace leaked to
 # the caller -- the instant something as ordinary as `.strip` touched the
 # tainted string (see `read_utf8_body!`, which now catches this up front).
+error PayloadTooLargeError do
+  content_type 'application/json'
+  status 413
+  { error: 'payload_too_large' }.to_json
+end
+
 error JSON::ParserError, InvalidBodyEncodingError do
   content_type 'application/json'
   status 400
