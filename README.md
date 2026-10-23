@@ -21,6 +21,9 @@ startup). Maintaining/releasing this project? See [`RELEASING.md`](RELEASING.md)
 * [Installing External](./external/README.md)
 * [Installing Internal](./internal/README.md)
 
+**Already running Severance 1.1.0?** Read [Upgrading from 1.1.0](./external/README.md#upgrading-from-110)
+before you touch anything! Both components must be upgraded together.
+
 Both must be running for the system to actually answer anything! Deploy only External and it will
 queue requests forever without ever returning a result -- it never talks to the triplestore itself,
 only Internal does.
@@ -47,7 +50,7 @@ the query you need doesn't exist there yet, you must negotiate with the data pro
 
 **Interoperability and Security Features:**
 
-1. Requires an authorization token (from whatever mechanism you wish).
+1. Requires an authorization token -- **External will not even start without one!** It must be at least 32 characters; example values like `YesItsMe` are refused. Tokens are checked in constant time and case-sensitively, and repeated wrong guesses from one address are throttled.
 2. Queries are named and pre-approved, not arbitrary -- **you cannot run arbitrary SPARQL through Severance, ever, no matter what token or facade you have.**
 3. The query itself is never passed -- it exists only in the internal component, referred to by name.
 4. Follows web standards for queued processes.
@@ -61,7 +64,11 @@ the query you need doesn't exist there yet, you must negotiate with the data pro
 12. The Internal component runs with a RAM-based tempfile system, so attempts to write to `/tmp` do not go to disk.
 13. Code content of the Docker containers is minimal -- a very low profile for security risks.
 14. Containers both run as unprivileged users.
-15. Incoming query bindings are cleansed before being placed into a query, not merely quoted: `iri`-typed bindings are validated against the SPARQL 1.1 `IRIREF` grammar's disallowed characters and rejected outright (not sanitized and passed through) if invalid, and other typed bindings are quote-escaped. This closes off using a pre-approved query's own parameters as an injection vector to reach data outside that query's intended scope -- see `CHANGELOG.md` for the vulnerability this fixed.
+15. Incoming query bindings are cleansed before being placed into a query, not merely quoted: `iri`-typed bindings are validated against the SPARQL 1.1 `IRIREF` grammar's disallowed characters and rejected outright (not sanitized and passed through) if invalid, and other typed bindings are quote-escaped. All bindings are then substituted in a single pass, so text one binding inserts is never re-read as a placeholder for another. This closes off using a pre-approved query's own parameters as an injection vector to reach data outside that query's intended scope -- see `CHANGELOG.md` for the vulnerabilities this fixed.
+16. Internal proves who it is to External with its own secret (`INNIE_TOKEN`), separate from the callers' `AUTH_TOKEN`. **Being on an allowed IP address is NOT enough on its own!** An IP address is not an identity.
+17. Each encrypted answer is bound to its own job: an answer moved into another job's slot fails to decrypt instead of being handed to the wrong caller.
+18. Request sizes, answer sizes and the length of the queue are all capped, so a flood of requests cannot fill External's disk.
+19. Binding values and the final, filled-in query text are never written to the logs.
 
 ### Threat model
 
@@ -77,4 +84,5 @@ considered and addressed so far," not as "a certified list of everything that co
 1. **Modify queries** -- high-impact attack. Likelihood? An attacker needs to either a) secretly change the query in GitHub so that a corrupted query is pulled by the Inside; b) count on the Inside forgetting to vet the queries they author or pull from GitHub (since this is voluntary and manual!); or c) already be inside the protected space with file-level access to modify the query -- in which case there are bigger problems! The most likely attacker profile for all of these is a rogue employee.
 2. **Modification of the Docker image** -- high-impact attack, similar risk profile to above.
 3. All other attacks we can imagine already require the attacker to be inside the Secure Zone, which is already the highest level of impact regardless of this software's security.
-4. **`AUTH_TOKEN` capture/replay** -- real, and worth understanding rather than assuming away. `AUTH_TOKEN` is a static, unsigned bearer value: whoever configures a client (a browser app, RedCap, a custom facade, etc.) to send it must keep it secret, but nothing in the protocol itself binds it to a specific request, a specific time window, or a specific caller. Anyone who ever sees the value -- a leaked config file, a compromised client host, a value visible in a client's own browser devtools/Network tab if it's ever handled client-side -- can replay it indefinitely from anywhere. **This is bounded, not eliminated, by the named-query design**: a stolen token only ever grants "submit one of the pre-approved `query_id`s with attacker-chosen binding values" -- never arbitrary SPARQL, never discovery of the query text itself (which never leaves Internal). Don't rely on `AUTH_TOKEN` as strong evidence of *who* is calling, only as a basic filter against casual/accidental access; if a specific integration needs real per-caller distinction, that has to be built into the query design (bindings, tighter per-query allow-lists) rather than assumed from the token.
+4. **`AUTH_TOKEN` capture/replay** -- real, and worth understanding rather than assuming away. `AUTH_TOKEN` is a static, unsigned bearer value: whoever configures a client (a browser app, RedCap, a custom facade, etc.) to send it must keep it secret, but nothing in the protocol itself binds it to a specific request, a specific time window, or a specific caller. Anyone who ever sees the value -- a leaked config file, a compromised client host, a value visible in a client's own browser devtools/Network tab if it's ever handled client-side -- can replay it indefinitely from anywhere. **This is bounded, not eliminated, by the named-query design**: a stolen token only ever grants "submit one of the pre-approved `query_id`s with attacker-chosen binding values" -- never arbitrary SPARQL, never discovery of the query text itself (which never leaves Internal). Don't rely on `AUTH_TOKEN` as strong evidence of *who* is calling, only as a basic filter against casual/accidental access; if a specific integration needs real per-caller distinction, that has to be built into the query design (bindings, tighter per-query allow-lists) rather than assumed from the token. Requiring a long random token and throttling wrong guesses makes *guessing* it hopeless -- **it does nothing against a token that has already leaked!** Every caller shares the same token, so rotating it means updating every caller at once.
+5. **Impersonating Internal** -- whoever can pull from External's queue sees every caller's request, and whoever can push answers decides what callers receive. This is why Internal's routes need BOTH an allowed IP address AND `INNIE_TOKEN`. **Guard `INNIE_TOKEN` more carefully than `AUTH_TOKEN`, and NEVER give it to a caller or a facade!** There is also no built-in TLS between Internal and External: if they talk across a network you don't trust, put HTTPS in front of External, or anyone on that network can read the token.

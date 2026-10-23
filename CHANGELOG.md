@@ -11,13 +11,37 @@ All notable changes to this project are documented here. Format loosely follows 
   `ALLOWED_INTERNAL_IPS` filter). **Breaking:** set `INNIE_TOKEN` in both `.env` files.
 - `AUTH_TOKEN` is now required (>= 32 characters); External no longer starts with authentication disabled
   or with the example value. Token comparison is constant-time and case-sensitive; repeated failures from one
-  IP are throttled (`AUTH_FAIL_LIMIT`, `AUTH_FAIL_WINDOW`).
+  IP are throttled (`AUTH_FAIL_LIMIT`, `AUTH_FAIL_WINDOW`) on caller routes. Internal's routes are exempt
+  from the throttle, so failed caller logins (including ones spoofing Internal's address via
+  `X-Forwarded-For`) can never lock Internal out.
 - Results are encrypted with the job UUID as authenticated data. **Breaking:** drain the queue and delete any
   uncollected `*.enc` results before upgrading.
 - Job ids are validated as UUIDs; request/result sizes and the pending queue length are capped
   (`MAX_REQUEST_BYTES`, `MAX_CATALOG_BYTES`, `MAX_RESULT_BYTES`, `MAX_PENDING_JOBS`).
 - Binding values and bound query text are no longer written to logs.
 - `.env` files and runtime data directories are git-ignored.
+
+### Changed
+
+- New optional External settings: `PUBLIC_BASE_URL` (used for the `Location` header instead of the request's
+  `Host`), plus the size/queue/throttle limits above. All are documented in `external/README.md`.
+- `external/check_before_filter.rb` updated to the two-token auth model.
+
+### Documentation
+
+- New "Upgrading from 1.1.0" section in `external/README.md` (covers both components), linked from the
+  top-level and Internal READMEs. Install docs updated for the two required tokens, the new limits, and an
+  error-code table.
+- Fixed pre-existing errors in `external/README.md`: a still-pending job returns `202 Accepted`, not
+  `201 Created`; an uninstalled `query_id` is not rejected with an error but sits as `"processing"`
+  forever; undeclared bindings are ignored, not rejected. Curl examples no longer use the `YesItsMe` token.
+
+### Credits
+
+- Mark Wilkinson commissioned an independent review of 1.1.0 that produced the security patches above, and
+  directed applying them and updating the install docs. The patches were re-tested here against the real
+  Gemfiles (Sinatra 4.2.1 / Rack 3.2.7), and that pass found and fixed the Internal-lockout issue in the
+  new throttle before release.
 
 ## [1.1.0] - 2026-09-22
 
