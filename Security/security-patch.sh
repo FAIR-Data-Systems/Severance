@@ -87,6 +87,16 @@ patch_image() {
   # throwaway_env generates a fresh, never-reused set for each container this script starts.
   docker run -d --name "${name}" $(throwaway_env) "${build_tag}" >&2
   sleep 2
+  # Every image must actually start before anything else happens to it -- not only auto-patched ones.
+  # Without this, an image that crashes on boot (e.g. beacon-facade after a Ruby 3.4 base-image bump
+  # dropped the `csv` default gem, 2026-11) was patched "successfully" -- every docker exec failing
+  # quietly -- and pushed.
+  if ! docker ps --filter "name=^${name}\$" --filter "status=running" --format '{{.Names}}' | grep -q .; then
+    echo "FATAL: ${name} does not start -- not patching or pushing it. Its log:" >&2
+    docker logs "${name}" 2>&1 | tail -20 >&2
+    docker rm -f "${name}" >/dev/null 2>&1 || true
+    exit 1
+  fi
   echo "updating ${name}" >&2
   docker exec "${name}" apt-get -y update >&2
   docker exec "${name}" apt-get -y dist-upgrade --fix-missing >&2
@@ -99,7 +109,7 @@ patch_image() {
   docker rmi "${build_tag}" >/dev/null 2>&1 || true
 
   echo "trivy" >&2
-  trivy image --scanners vuln --format json --severity CRITICAL,HIGH --timeout 1800s \
+  trivy image --scanners vuln --format json --timeout 1800s \
     "${working_tag}" > "${outputfile}"
 
   if [ -f "${build_dir}/Gemfile" ]; then
@@ -152,7 +162,7 @@ patch_image() {
         docker commit "${name}" "${working_tag}" >&2
         docker stop "${name}" >/dev/null
         docker rm "${name}" >/dev/null
-        trivy image --scanners vuln --format json --severity CRITICAL,HIGH --timeout 1800s \
+        trivy image --scanners vuln --format json --timeout 1800s \
           "${working_tag}" > "${outputfile}"
         ruby "${SCRIPT_DIR}/annotate_gem_shadowing.rb" "${outputfile}" "${build_dir}" >&2 || true
 

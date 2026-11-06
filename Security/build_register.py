@@ -109,6 +109,12 @@ MANUAL_DECISIONS = {
                        "patterns (net-http lib/net/http.rb). Name lookups go through "
                        "TCPSocket/getaddrinfo, so the vulnerable DNS-response decoder "
                        "(Resolv::DNS) is never run. Verified 2026-11-06 in the built image."),
+    ("sevinternal", "CVE-2026-80213"): ("ACCEPT", "resolv 0.2.3: Resolv::DNS::MessageEncoder writes "
+                       "over-long labels with a wrapped length octet. Same reasoning as "
+                       "CVE-2026-80212: resolv is loaded (net-http) only for its IPv4/IPv6 address "
+                       "regexes; Resolv::DNS never encodes or sends a query here -- lookups use "
+                       "getaddrinfo. MEDIUM, first visible 2026-11-06 once gem findings were "
+                       "recorded at every severity."),
     ("sevinternal", "CVE-2026-41316"): ("ACCEPT", "erb 4.0.2 (Ruby default gem) is never loaded by "
                        "innie.rb (verified 2026-11-06 via $LOADED_FEATURES in the built image), and "
                        "the bug also needs Marshal.load of attacker data, which innie.rb never does."),
@@ -280,7 +286,7 @@ def main():
         })
 
     # Sort: CRITICAL first, then by exposure tier, then image, then CVE
-    sev_rank = {"CRITICAL": 0, "HIGH": 1}
+    sev_rank = {"CRITICAL": 0, "HIGH": 1, "MEDIUM": 2, "LOW": 3, "UNKNOWN": 4}
     out_rows.sort(key=lambda r: (sev_rank.get(r["Severity"], 9), r["ExposureTier"],
                                   r["Image"], r["VulnerabilityID"]))
 
