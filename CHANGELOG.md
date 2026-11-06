@@ -32,6 +32,18 @@ All notable changes to this project are documented here. Format loosely follows 
   i.e. 7 days). Pending jobs are never expired.
 - Secrets can be read from files: `ENCRYPTION_KEY_HEX_FILE`, `AUTH_TOKEN_FILE`, `INNIE_TOKEN_FILE`,
   `TRIPLESTORE_PASS_FILE` (e.g. Docker secrets), keeping them out of the container environment.
+- **The published 2026-09-22 images still trust the compromised eMudhra/emSign certificate hierarchy**
+  (`emSign ECC Root CA - G3`, `AAA Certificate Services`; October 2026, Debian DSA-6572-1). Images
+  built from this release do not. Until you upgrade, don't let Internal reach External over a network
+  you don't trust.
+- `docker-compose.yml` files now pin each image by digest (`tag@sha256:...`), not by tag alone, so an
+  image replaced under the same tag on Docker Hub is refused -- what happened to Vantage6's registry in
+  March 2026.
+- External accepts a result only for a job Internal has actually taken from the queue (`409`
+  otherwise). Previously anything holding Internal's credentials could plant an answer under any job id.
+- `Security/PEER_ADVISORIES.md`: every published Vantage6 security problem (39 advisories, plus two
+  incidents they never published as advisories) mapped onto Severance -- fixed, safe by design, or
+  still OPEN.
 
 - Query bindings are now substituted in a single pass over the original query text.
 - Internal authenticates its calls to External with a new required `INNIE_TOKEN` (in addition to the
@@ -53,6 +65,14 @@ All notable changes to this project are documented here. Format loosely follows 
 - New optional External settings: `PUBLIC_BASE_URL` (used for the `Location` header instead of the request's
   `Host`), plus the size/queue/throttle limits above. All are documented in `external/README.md`.
 - `external/check_before_filter.rb` updated to the two-token auth model.
+- Scan pipeline: Trivy runs at every severity; Ruby gem findings are recorded at every severity (a MEDIUM
+  `rack` bug that let a forged `Host` into External's `Location` header was hidden by the old
+  CRITICAL/HIGH filter), OS findings at CRITICAL/HIGH and unscored (`UNKNOWN`, e.g. DSA-6572-1).
+  `security-patch.sh` refuses to patch or push an image that does not start.
+- `Security/advisory_watch.py` (notify-only; e.g. for a scheduled Hermes job): reports new peer-project
+  advisories, security lines in their release notes, security-related news articles, gem advisories
+  (RubySec and OSV) for our pinned versions, and Debian security announcements for packages in our
+  images. Each source exists because a real 2026 event appeared there and nowhere else.
 - A job Internal refuses (unknown `query_id`, missing query file, malformed bindings, unlisted
   `enumerate` value, update query) now gets an empty answer promptly, instead of saying "processing"
   forever. Internal no longer logs "Registration completed" after a failed registration, and a 401 there

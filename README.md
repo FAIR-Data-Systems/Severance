@@ -82,6 +82,11 @@ Severance and why. Start with [Security/VULNERABILITY_TRIAGE.md](Security/VULNER
 -- its first section is written for you, and tells you how to read the rest. **A long list of
 findings is NOT the same as a long list of risks!** Read the `Decision` column, not the count.
 
+**A scanner cannot find flaws in Severance's own design!** For those, read
+[Security/PEER_ADVISORIES.md](Security/PEER_ADVISORIES.md): every security problem published by
+similar projects (starting with Vantage6, including two serious incidents they never published as
+advisories), whether Severance has the same kind of flaw, and which ones are still OPEN.
+
 ### Threat model
 
 **A note on how this and the list below are produced:** several of the items above and the attack

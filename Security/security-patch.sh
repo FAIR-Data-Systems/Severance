@@ -45,7 +45,7 @@ trap 'rm -f "${AUTOPATCH_QUEUE}"' EXIT
 # CHANGELOG.md's erb/resolv entries), vs a real, still-reachable one.
 #
 # All progress output below goes to stderr; the final `fairdatasystems/
-# <name>:<timestamp>` tag is the only thing written to stdout, so callers can
+# <name>:<timestamp>@sha256:<digest>` reference is the only thing written to stdout, so callers can
 # capture it with `tag=$(patch_image ...)` while still seeing live progress.
 # Random, single-use secrets for a container that only ever exists to be patched or smoke-tested here,
 # never to serve real traffic. Printed as `docker run` -e flags (hex only, so safe unquoted).
@@ -206,9 +206,22 @@ Co-Authored-By: Claude Sonnet 5 <noreply@anthropic.com>" \
   echo "push" >&2
   docker push "${working_tag}" >&2
   echo "pushed" >&2
+
+  # Pin the compose files to this exact image by digest, not by tag alone. A tag can be re-pointed by
+  # anyone who gets push access to the registry; a digest cannot. That is exactly what happened to
+  # Vantage6 in March 2026: an attacker with admin access to their registry put a malware downloader
+  # into images under their existing tags, and everyone who pulled those tags got it. With
+  # `tag@sha256:...`, docker refuses an image whose content doesn't match. No digest = no pin = stop.
+  local digest
+  digest=$(docker inspect --format '{{range .RepoDigests}}{{println .}}{{end}}' "${working_tag}" \
+    | grep "^fairdatasystems/${name}@sha256:" | head -1 | cut -d@ -f2)
+  if [ -z "${digest}" ]; then
+    echo "FATAL: no registry digest for ${working_tag} after push -- not writing a tag-only pin" >&2
+    exit 1
+  fi
   echo "END" >&2
 
-  echo "${working_tag}"
+  echo "${working_tag}@${digest}"
 }
 
 # Opens a PR for a repo with a queued auto-patch commit. $1 = repo_path, $2 = branch, $3 = title.
