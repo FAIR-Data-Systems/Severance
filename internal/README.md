@@ -9,6 +9,10 @@ It NEVER listens on a network port and NEVER accepts a connection from outside -
 *out* to External and your triplestore. **DO NOT install Internal before you have External installed
 and working** -- see [Installing External](../external/README.md) first if you haven't already.
 
+**Upgrading an install that is already running?** Follow [Upgrading from
+1.1.0](../external/README.md#upgrading-from-110) in External's guide. It covers both components, and
+**upgrading only one of them breaks the pair!**
+
 ## What you need before you start
 
 1. **A Virtuoso instance, up and running**, containing your data.
@@ -17,7 +21,8 @@ and working** -- see [Installing External](../external/README.md) first if you h
    installs are isolated from each other by named graph, not by repository name.)
 3. **A Virtuoso user with read-only (`SPARQL_SELECT`) access to that data.** This CANNOT be an
    anonymous account -- see the note on `TRIPLESTORE_USER`/`TRIPLESTORE_PASS` below for why.
-4. **An instance of Severance External already running**, in your DMZ.
+4. **An instance of Severance External already running**, in your DMZ -- and the `ENCRYPTION_KEY_HEX`
+   and `INNIE_TOKEN` values from its `.env`.
 5. **A network path from this server to that External instance.** If this server cannot reach
    External's API URL, nothing else in this guide will work.
 
@@ -34,6 +39,7 @@ and working** -- see [Installing External](../external/README.md) first if you h
     ENCRYPTION_KEY_HEX=<generate with: openssl rand -hex 32>
     RESULT_FORMAT=csv  # must be the same as the External component!
     QUERY_DIR=/queries  # DO NOT CHANGE THIS unless you really know what you're doing
+    INNIE_TOKEN=<the exact INNIE_TOKEN value from External's .env>
     EXTERNAL_URL=http://111.111.111.111:3000   # The URL to the External API.  
     TRIPLESTORE_URL=http://localhost:8890/sparql-auth  # Virtuoso's Digest-authenticated SPARQL endpoint
     TRIPLESTORE_USER = <your Virtuoso read-only username>
@@ -45,6 +51,11 @@ and working** -- see [Installing External](../external/README.md) first if you h
 - **`ENCRYPTION_KEY_HEX`** -- **must be the exact same value you set on External.** Generate it once
   with `openssl rand -hex 32`, then copy it to both `.env` files. **DO NOT leave the placeholder text
   in place** -- Internal refuses to start if you do.
+- **`INNIE_TOKEN`** -- **must be the exact same value you set on External**, and at least 32
+  characters. Internal refuses to start without it. **This is NOT the `AUTH_TOKEN`!** `AUTH_TOKEN` is
+  for callers. `INNIE_TOKEN` is the separate secret only Internal uses, and External refuses
+  `AUTH_TOKEN` on the routes Internal calls. If they don't match, External's log shows `Auth failed`
+  every time Internal polls, and **no request is ever answered.**
 - **`RESULT_FORMAT`** -- must also match External's setting, exactly.
 - **`EXTERNAL_URL`** -- the real, reachable address of your External instance.
 - **`TRIPLESTORE_URL`/`TRIPLESTORE_USER`/`TRIPLESTORE_PASS`** -- read the warning below before you set

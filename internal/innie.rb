@@ -57,18 +57,38 @@ elsif raw_encryption_key_hex == EXAMPLE_ENCRYPTION_KEY_HEX
 end
 ENCRYPTION_KEY = [raw_encryption_key_hex].pack('H*')
 
+# Shared secret Innie presents to External on its three calls (queue/pull,
+# job result push, query catalogue push). External also IP-filters these
+# routes, but an IP address is not an identity (reverse proxies, Docker
+# port-forwarding and rootless Docker can all make remote traffic appear to
+# come from an allow-listed address), so the IP check is defense in depth and
+# this secret is the actual credential. Must be set identically on External and
+# must differ from External's AUTH_TOKEN (the caller-facing token).
+INNIE_TOKEN = ENV['INNIE_TOKEN'].to_s.strip
+if INNIE_TOKEN.length < 32
+  abort 'FATAL: INNIE_TOKEN is not set or is shorter than 32 characters. Generate one with ' \
+        '`openssl rand -hex 32` and set it identically on External and Internal.'
+end
+
+# Adds Innie's credential to an outbound request to External.
+def authorize_for_external(request)
+  request['Authorization'] = "Bearer #{INNIE_TOKEN}"
+  request
+end
+
 # ============== AES-256-GCM helpers ==============
 
 # Encrypts data using AES-256-GCM.
 #
 # @param data [String] Plaintext data to encrypt
+# @param aad [String] Additional authenticated data -- the job UUID
 # @return [String] Encrypted binary data (nonce + tag + ciphertext)
 # Note: This method aggressively attempts to zero out the plaintext data after
 # encryption to minimize in-memory exposure.
 # Warning: While this method tries to reduce the risk of sensitive data lingering in memory,
 # it cannot guarantee complete security due to Ruby's memory management and string immutability.
 # Use with caution and consider additional security measures if handling highly sensitive data.
-def encrypt(data)
+def encrypt(data, aad)
   # Work on a binary copy
   data = data.dup.force_encoding(Encoding::BINARY)
 
@@ -76,6 +96,9 @@ def encrypt(data)
   cipher.encrypt
   cipher.key = ENCRYPTION_KEY
   nonce = cipher.random_iv
+  # Bind the ciphertext to the job it belongs to: a blob encrypted for one job
+  # fails authentication if it is moved into another job's result slot.
+  cipher.auth_data = aad.to_s
   ciphertext = cipher.update(data) + cipher.final
   tag = cipher.auth_tag
 
@@ -90,7 +113,7 @@ end
 # @param encrypted [String] Binary encrypted data (nonce + tag + ciphertext)
 # @return [String] Decrypted plaintext
 # @raise [OpenSSL::Cipher::CipherError] if decryption fails (wrong key, tampered data, etc.)
-def decrypt(encrypted)
+def decrypt(encrypted, aad)
   cipher = OpenSSL::Cipher.new('aes-256-gcm')
   cipher.decrypt
   cipher.key = ENCRYPTION_KEY
@@ -99,6 +122,7 @@ def decrypt(encrypted)
   ct = encrypted[28..]
   cipher.iv = nonce
   cipher.auth_tag = tag
+  cipher.auth_data = aad.to_s
   cipher.update(ct) + cipher.final
 end
 
@@ -113,7 +137,7 @@ end
 # @param plaintext [String] Result body to encrypt and push
 def push_result(uuid, plaintext)
   plaintext = plaintext.dup.force_encoding(Encoding::BINARY)
-  encrypted_result = encrypt(plaintext)
+  encrypted_result = encrypt(plaintext, uuid)
   plaintext.replace("\0" * plaintext.bytesize)
   plaintext.clear
   GC.start(full_mark: true, immediate_sweep: true) if defined?(GC)
@@ -124,6 +148,7 @@ def push_result(uuid, plaintext)
 
   push_req = Net::HTTP::Post.new(push_uri)
   push_req['Content-Type'] = 'application/octet-stream'
+  authorize_for_external(push_req)
   push_req.body = encrypted_result
 
   http.request(push_req)
@@ -200,6 +225,9 @@ end
 def substitute_grlc_bindings(query, bindings, variable_types = {})
   return query if bindings.nil? || bindings.empty?
 
+  # Pass 1: validate + escape every binding up front. Nothing is substituted
+  # yet, so a rejected binding leaves the query untouched.
+  escaped = {}
   bindings.each do |k, v|
     next if v.nil?
 
@@ -207,43 +235,47 @@ def substitute_grlc_bindings(query, bindings, variable_types = {})
       raise InvalidEncodingError, "Binding '#{k}' contains a byte sequence that is not valid UTF-8 (rejected, not substituted)"
     end
 
-    warn "Processing binding: #{k} => #{v.inspect}"
-    warn "Variable types for #{k}: #{variable_types[k.to_s]}"
-    # Determine if this variable is declared as iri
     is_iri = variable_types[k.to_s]&.downcase == 'iri'
-    warn "Variable '#{k}' is declared as IRI: #{is_iri}"
-    escaped_value = if is_iri
-                      stripped = v.to_s.strip
-                      # Un-wrap a caller-supplied <...> so we validate the
-                      # actual IRI content either way, not the brackets.
-                      bare = stripped.start_with?('<') && stripped.end_with?('>') ? stripped[1..-2] : stripped
-                      unless valid_iriref?(bare)
-                        raise InvalidIriError, "Binding '#{k}' declared as iri contains a character " \
-                                                'not permitted inside a SPARQL IRIREF (rejected, not substituted)'
-                      end
-                      "<#{bare}>"
-                    else
-                      escape_for_sparql(v)
-                    end
-    warn "Escaped value for #{k}: #{escaped_value}"
+    escaped[k.to_s.downcase] ||= if is_iri
+                                   stripped = v.to_s.strip
+                                   # Un-wrap a caller-supplied <...> so we validate the
+                                   # actual IRI content either way, not the brackets.
+                                   bare = stripped.start_with?('<') && stripped.end_with?('>') ? stripped[1..-2] : stripped
+                                   unless valid_iriref?(bare)
+                                     raise InvalidIriError, "Binding '#{k}' declared as iri contains a character " \
+                                                             'not permitted inside a SPARQL IRIREF (rejected, not substituted)'
+                                   end
+                                   "<#{bare}>"
+                                 else
+                                   escape_for_sparql(v)
+                                 end
+  end
+  return query if escaped.empty?
 
-    # Match ?_key_type / ?__key_type (the type suffix that drives extract_parameters'
-    # variable_types) AND the bare ?_key / ?__key form with no suffix at all -- GRLC's own dialect for
-    # a parameter declared only via a `#+ parameters:` block (name/type/required/default), which
-    # extract_parameters can't infer a type from inline (see annotation_parser.rb's
-    # fold_parameters_block!). A required end-of-name boundary (\b) stops "speciesname" from also
-    # matching a longer variable like "speciesname2". Missed on the first #+ parameters: fix --
-    # caught only by a real end-to-end run against FLAIR-GG's species_location.rq, whose
-    # `?_speciesname` placeholder has no type suffix: it was silently left unreplaced in the query
-    # sent to the triplestore, an unbound variable, always zero rows, no error anywhere in the chain.
-    pattern = /(?:\?__|\?_)#{Regexp.escape(k.to_s)}(?:_[\w:]+)?\b/i
-    substituted = !query.gsub!(pattern) { escaped_value }.nil?
+  # Pass 2: ONE scan over the ORIGINAL query text, replacing every placeholder
+  # with its escaped value in a single gsub. Substituting binding-by-binding
+  # (the previous behaviour) re-scanned text that earlier bindings had already
+  # inserted, so a caller-supplied value containing e.g. `?_other_string` was
+  # itself treated as a placeholder and rewritten with another binding's
+  # quoted value -- letting that value's opening quote close the first literal
+  # and the rest land in the query as raw SPARQL. Here, replacement text is
+  # never rescanned.
+  #
+  # Matches ?_key_type / ?__key_type AND the bare ?_key / ?__key form (GRLC's
+  # `#+ parameters:` dialect). Longest keys first so `speciesname2` is never
+  # shadowed by `speciesname`; the trailing \b keeps a key from matching a
+  # longer variable name.
+  alternation = escaped.keys.sort_by { |k| -k.length }.map { |k| Regexp.escape(k) }.join('|')
+  pattern = /(?:\?__|\?_)(#{alternation})(?:_[\w:]+)?\b/i
+  used = []
+  query = query.gsub(pattern) do
+    key = Regexp.last_match(1).downcase
+    used << key
+    escaped[key]
+  end
 
-    if substituted
-      warn "→ Substituted ?_#{k}_* → #{escaped_value}"
-    else
-      warn "⚠ No ?_#{k}[_type] placeholder found in the query for binding '#{k}' -- nothing substituted"
-    end
+  (escaped.keys - used).each do |k|
+    warn "⚠ No ?_#{k}[_type] placeholder found in the query for binding '#{k}' -- nothing substituted"
   end
   query
 end
@@ -387,6 +419,7 @@ def process_queries
     warn "Pushing #{available_queries.size} available queries to #{push_uri.inspect}..."
     push_req = Net::HTTP::Post.new(push_uri)
     push_req['Content-Type'] = 'application/json; charset=utf-8'
+    authorize_for_external(push_req)
     push_req.body = JSON.generate(available_queries)
 
     http = Net::HTTP.new(push_uri.hostname, push_uri.port)
@@ -429,7 +462,7 @@ if __FILE__ == $PROGRAM_NAME
     warn "Polling for new jobs at #{poll_uri.inspect}..."
     http = Net::HTTP.new(poll_uri.hostname, poll_uri.port)
     http.use_ssl = (poll_uri.scheme == 'https')
-    response = http.request(Net::HTTP::Get.new(poll_uri))
+    response = http.request(authorize_for_external(Net::HTTP::Get.new(poll_uri)))
   rescue StandardError => e
     warn "⚠ Failed to poll for jobs: #{e.class} - #{e.message}"
     sleep POLL_INTERVAL
@@ -447,6 +480,13 @@ if __FILE__ == $PROGRAM_NAME
   job = JSON.parse(response.body)
   uuid = job['uuid']
   raise 'No UUID in job response!' unless uuid
+  # Innie interpolates this into a URL path later; never trust the queue side to
+  # have handed back something other than a canonical UUID.
+  unless uuid.to_s.match?(/\A\h{8}-\h{4}-\h{4}-\h{4}-\h{12}\z/)
+    warn 'Ignoring job with malformed uuid'
+    sleep POLL_INTERVAL
+    next
+  end
 
   query_id = job['query_id']
   bindings = job['bindings'] || {}
@@ -477,7 +517,6 @@ if __FILE__ == $PROGRAM_NAME
 
   query = File.read(query_path, encoding: 'UTF-8')
   warn "Found query #{query_id} (#{query_path})"
-  warn "all_queries #{all_queries.inspect}"
 
   # === Bind grlc-style placeholders (?_key_type) ===
   begin
@@ -497,7 +536,7 @@ if __FILE__ == $PROGRAM_NAME
     sleep POLL_INTERVAL
     next
   end
-  warn "Final query after binding:\n#{query}"
+  warn "Query #{query_id} bound (#{bindings.size} binding(s)); values are not logged"
 
   validate_query(query) # currently a no-op, but can be expanded with real validation logic later
 
@@ -553,7 +592,7 @@ if __FILE__ == $PROGRAM_NAME
     # 1. Immediately duplicate the body as BINARY
     plaintext = res.body.dup.force_encoding(Encoding::BINARY)
     # 2. Encrypt our copy immediately
-    encrypted_result = encrypt(plaintext)
+    encrypted_result = encrypt(plaintext, uuid)
 
     # 3. Zero out the ORIGINAL response body inside Net::HTTPResponse
     if res.body
@@ -581,6 +620,7 @@ if __FILE__ == $PROGRAM_NAME
 
     push_req = Net::HTTP::Post.new(push_uri)
     push_req['Content-Type'] = 'application/octet-stream'   # ← changed for binary encrypted data
+    authorize_for_external(push_req)
     push_req.body = encrypted_result                        # binary data, do NOT force_encoding to UTF-8
 
     push_res = http.request(push_req)

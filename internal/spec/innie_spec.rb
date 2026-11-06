@@ -7,6 +7,7 @@ require 'spec_helper'
 # entering the infinite loop. ENCRYPTION_KEY_HEX must be set before the require, or the file aborts
 # the process outright (see innie.rb's own startup check).
 ENV['ENCRYPTION_KEY_HEX'] ||= '1' * 64
+ENV['INNIE_TOKEN'] ||= '2' * 40
 require_relative '../innie'
 
 RSpec.describe '#substitute_grlc_bindings (internal/innie.rb)' do
@@ -77,5 +78,55 @@ RSpec.describe '#substitute_grlc_bindings (internal/innie.rb)' do
 
     expect(substitute_grlc_bindings(query.dup, {}, {})).to eq(query)
     expect(substitute_grlc_bindings(query.dup, nil, {})).to eq(query)
+  end
+end
+
+RSpec.describe 'single-pass substitution (internal/innie.rb)' do
+  let(:query) do
+    <<~Q
+      SELECT ?p WHERE {
+        ?p foaf:name ?_name_string ;
+           ex:country ?_country_string .
+      }
+    Q
+  end
+  let(:types) { { 'name' => 'string', 'country' => 'string' } }
+
+  it 'never treats text inserted by one binding as a placeholder for another' do
+    bindings = { 'name' => 'x ?_country_string', 'country' => '} UNION { ?s ?p ?o } #' }
+
+    result = substitute_grlc_bindings(query.dup, bindings, types)
+
+    # name's value is a plain, fully-quoted literal that merely *contains* the placeholder text
+    expect(result).to include('foaf:name "x ?_country_string" ;')
+    # country's value is a plain, fully-quoted literal too
+    expect(result).to include('ex:country "} UNION { ?s ?p ?o } #" .')
+    # and the injected text only ever appears inside quotes: no raw UNION outside a literal
+    expect(result.gsub(/"(?:[^"\\]|\\.)*"/, '""')).not_to include('UNION')
+  end
+
+  it 'gives the same result regardless of binding order' do
+    a = substitute_grlc_bindings(query.dup, { 'name' => 'x ?_country_string', 'country' => 'y' }, types)
+    b = substitute_grlc_bindings(query.dup, { 'country' => 'y', 'name' => 'x ?_country_string' }, types)
+
+    expect(a).to eq(b)
+  end
+
+  it 'still prefers the longer key when one key is a prefix of another' do
+    q = 'FILTER(?_species_string = ?_species2_string)'
+
+    result = substitute_grlc_bindings(q.dup, { 'species' => 'a', 'species2' => 'b' },
+                                      { 'species' => 'string', 'species2' => 'string' })
+
+    expect(result).to eq('FILTER("a" = "b")')
+  end
+
+  it 'rejects an invalid IRI binding without substituting anything' do
+    q = 'SELECT * WHERE { ?s ex:country ?_country_iri ; ex:name ?_name_string }'
+
+    expect do
+      substitute_grlc_bindings(q.dup, { 'name' => 'ok', 'country' => 'http://x> } #' },
+                               { 'name' => 'string', 'country' => 'iri' })
+    end.to raise_error(InvalidIriError)
   end
 end

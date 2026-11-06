@@ -9,11 +9,17 @@ You CAN submit a pre-approved, named query and get an answer back. You CANNOT ru
 Severance will refuse anything that isn't a query the data provider has already installed on Internal.
 Keep that in mind while you read the rest of this file.
 
+**Upgrading an install that is already running?** Read [Upgrading from 1.1.0](#upgrading-from-110)
+first! This release needs new settings on BOTH External and Internal, and upgrading only one of them
+breaks the pair.
+
 ## What you need before you start
 
 1. `docker compose` installed on your server.
-2. An Auth token. Generate one yourself, or use whatever mechanism you like to generate one -- Severance
-   doesn't care how you make it, only that you keep it secret afterward.
+2. **Two different secrets, each at least 32 characters long.** Run `openssl rand -hex 32` twice and
+   keep both outputs. One becomes `AUTH_TOKEN` (for your callers), the other `INNIE_TOKEN` (for
+   Internal only). **External refuses to start without both of them!** It also refuses a short one, an
+   example value like `YesItsMe`, or the same value used for both.
 
 ## Step-by-step setup
 
@@ -32,22 +38,46 @@ Keep that in mind while you read the rest of this file.
     QUERY_DIR=/queries   # DO NOT CHANGE THIS unless you really know what you're doing
     QUEUE_DIR=/data/queue  # DO NOT CHANGE THIS unless you really know what you're doing
     RESULTS_DIR=/data/results  # DO NOT CHANGE THIS unless you really know what you're doing
-    AUTH_TOKEN=YesItsMe
+    AUTH_TOKEN=<output of: openssl rand -hex 32>
+    INNIE_TOKEN=<a different output of: openssl rand -hex 32>
     ALLOWED_INTERNAL_IPS=172.31.0.1,127.0.0.1,::1,192.168.1.100   # CHANGE 192.168.1.100 to the IP of Internal 
     METADATA_DIR=/queries-metadata  # Don't change this unless you know what you're doing
 
 - **`ENCRYPTION_KEY_HEX`** -- generate your own with `openssl rand -hex 32`. **DO NOT leave the
   placeholder text in place** -- both External and Internal refuse to start if you do. This exact same
   key **must** also be set on Internal, or nothing will decrypt correctly.
-- **`AUTH_TOKEN`** -- your callers' shared secret. Anyone who has it can call your service. See the
+- **`AUTH_TOKEN`** -- your callers' shared secret. **REQUIRED, at least 32 characters.** Anyone who has
+  it can call your service, so give it only to the callers (and facades) you mean to serve. See the
   warning below for what this does and does not protect against.
-- **`ALLOWED_INTERNAL_IPS`** -- a whitelist of addresses allowed to reach the parts of the API that
-  don't require an Auth token (this is how Internal talks to External). Each entry can be a bare IP
-  (`192.168.1.100`), a CIDR range (`192.168.1.0/24`), or the word `localhost`. **Keep this list as short
-  as possible.** During testing you can include `localhost`/`127.0.0.1`; in production it should
-  contain only Internal's real address.
+- **`INNIE_TOKEN`** -- the secret Internal presents to External, and ONLY Internal. **REQUIRED, at least
+  32 characters, and it MUST be different from `AUTH_TOKEN`!** Put the exact same value in Internal's
+  `.env`. **NEVER give this one to a caller or a facade!** It is what lets something pull your queued
+  requests and push answers back.
+- **`ALLOWED_INTERNAL_IPS`** -- the addresses Internal is allowed to call from. Each entry can be a bare
+  IP (`192.168.1.100`), a CIDR range (`192.168.1.0/24`), or the word `localhost`. **This is NOT a
+  replacement for `INNIE_TOKEN`!** A request to Internal's part of the API must come from one of
+  these addresses AND carry `INNIE_TOKEN`. An IP address is not proof of identity: proxies and Docker
+  networking can make a stranger's traffic look like it comes from an allowed address. **Keep this
+  list as short as possible.** During testing you can include `localhost`/`127.0.0.1`; in production
+  it should contain only Internal's real address.
 - **Everything marked "DO NOT CHANGE"** -- leave it alone unless you have read the code and know exactly
   what you're doing.
+
+**Optional settings.** These are not in `env_template`. The defaults are fine for most installs. Add a
+line to `.env` only if you have a real reason to change one:
+
+| Setting | Default | What it does |
+| --- | --- | --- |
+| `MAX_PENDING_JOBS` | `1000` | Most requests that can wait in the queue. Beyond this, new requests get `429 queue_full`. |
+| `MAX_REQUEST_BYTES` | `65536` (64 KB) | Largest query request a caller may send. |
+| `MAX_RESULT_BYTES` | `268435456` (256 MB) | Largest (encrypted) answer Internal may push back. **If your queries return bigger answers than this, raise it, or they will be refused!** |
+| `MAX_CATALOG_BYTES` | `2097152` (2 MB) | Largest query catalogue Internal may register. |
+| `AUTH_FAIL_LIMIT` / `AUTH_FAIL_WINDOW` | `10` / `60` | After this many failed logins from one address within this many seconds, that address gets `429` until the window passes. This applies to callers only, never to Internal. |
+| `PUBLIC_BASE_URL` | *(unset)* | Behind a reverse proxy, set this to the public address callers use (e.g. `https://severance.example.org`), so the `Location` header points there and not at the proxy's internal address. |
+
+**Behind a reverse proxy?** Make sure it passes on each caller's real address. If it doesn't, every
+caller looks like the same address, and **one caller with a wrong token locks ALL your callers out**
+for `AUTH_FAIL_WINDOW` seconds!
 
 **What `AUTH_TOKEN` actually protects against -- read this, don't assume.** `AUTH_TOKEN` is a static,
 unsigned secret. **Anyone who ever obtains it can replay it indefinitely, from anywhere** -- a leaked
@@ -109,16 +139,23 @@ installing Internal with a broken External.
 
 **Do these tests in order.** Do not skip ahead.
 
+First, put your `AUTH_TOKEN` in a shell variable, so you can paste the commands below exactly as
+written. **Use AUTH_TOKEN here, NOT INNIE_TOKEN!** INNIE_TOKEN is refused on every caller route.
+
+    export AUTH_TOKEN=<paste the AUTH_TOKEN value from your .env here>
+
 ### 1. Is it alive?
 
-    curl -v -H "Authorization: Bearer YesItsMe" http://localhost:3000/severance
+    curl -v -H "Authorization: Bearer $AUTH_TOKEN" http://localhost:3000/severance
 
 If you see an error here, **stop -- something is wrong.** Check the error message, and check that the
-Auth token you used matches `AUTH_TOKEN` in your `.env` file exactly.
+Auth token you used matches `AUTH_TOKEN` in your `.env` file exactly. **The token is case-sensitive!**
+If you get `429 Too many failed attempts`, you tried a wrong token too many times. Wait a minute
+before trying again.
 
 ### 2. Does it know about any queries yet?
 
-    curl -X GET http://localhost:3000/severance/available_queries -H "Authorization: Bearer YesItsMe" -H "Accept: application/json"
+    curl -X GET http://localhost:3000/severance/available_queries -H "Authorization: Bearer $AUTH_TOKEN" -H "Accept: application/json"
 
 This returns a JSON list of every query Internal has installed. See the
 [`/severance/available_queries`](#severanceavailable_queries) section further down for exactly what
@@ -127,7 +164,7 @@ started Internal yet, so it hasn't told External about any queries. Keep going.
 
 ### 3. Submit a query request
 
-    curl -v -X POST http://localhost:3000/severance/queries -H "Content-Type: application/json" -H "Authorization: Bearer YesItsMe" -d '{
+    curl -v -X POST http://localhost:3000/severance/queries -H "Content-Type: application/json" -H "Authorization: Bearer $AUTH_TOKEN" -d '{
         "query_id": "count",
         "bindings": {
           "orphacode": "http://www.orpha.net/ORDO/Orphanet_730"
@@ -137,36 +174,38 @@ started Internal yet, so it hasn't told External about any queries. Keep going.
 You should get back:
 
     HTTP/1.1 201 Created
-    Location:  http://localhost:3000/severance/jobs/ABC123
+    Location:  http://localhost:3000/severance/jobs/0b7e3c52-1f4a-4c8e-9d2b-6a5f0e8c1d37
     ...
     ...
+
+The long ID at the end of `Location` is your job ID. **Yours will be different -- use YOUR job ID in
+the commands below, not the one shown here!**
 
 ### 4. Check the status of what you just submitted
 
-    curl -X GET http://localhost:3000/severance/jobs/ABC123 -H "Authorization: Bearer YesItsMe" -H "Accept: application/json"
+    curl -i -X GET http://localhost:3000/severance/jobs/0b7e3c52-1f4a-4c8e-9d2b-6a5f0e8c1d37 -H "Authorization: Bearer $AUTH_TOKEN" -H "Accept: application/json"
 
 Right now, with Internal not yet running, you should get:
 
-    ...
-    HTTP/1.1 201 Created...
-    Location:  http://localhost:3000/severance/jobs/ABC123
+    HTTP/1.1 202 Accepted
     retry-after: 10
     ...
-    {"status": "processing"}
+    {"status":"processing"}
 
 **This is expected and correct.** Your request is queued and waiting. It will sit there safely -- no
 data is lost -- until Internal comes online and picks it up.
 
 ## Now install and start Internal
 
-See [Installing Internal](../internal/README.md).
+See [Installing Internal](../internal/README.md). **You will need your `INNIE_TOKEN` and
+`ENCRYPTION_KEY_HEX` values there -- copy them exactly!**
 
 The moment Internal starts, it will ask External if it has any queries waiting. Your request from step
 3 above will be picked up and answered automatically -- **you do not need to resubmit it.**
 
 ### 5. Check the status again, once Internal is running
 
-    curl -X GET http://localhost:3000/severance/jobs/ABC123 -H "Authorization: Bearer YesItsMe" -H "Accept: application/json"
+    curl -i -X GET http://localhost:3000/severance/jobs/0b7e3c52-1f4a-4c8e-9d2b-6a5f0e8c1d37 -H "Authorization: Bearer $AUTH_TOKEN" -H "Accept: application/json"
 
 Now you should get:
 
@@ -179,9 +218,45 @@ Now you should get:
 
 If you see this, **your installation works end to end.** If you still see `"status": "processing"`
 after a reasonable wait, check that Internal actually started without errors and can reach both
-External and your triplestore -- see [Installing Internal](../internal/README.md).
+External and your triplestore -- see [Installing Internal](../internal/README.md). If External's log
+shows `Auth failed` every time Internal polls, **Internal's `INNIE_TOKEN` does not match External's.**
+
+## Upgrading from 1.1.0
+
+**This upgrade changes BOTH components, and they only work as a matched pair!** A new External
+refuses an old Internal (the old one sends no `INNIE_TOKEN`). A new Internal's answers cannot be
+read by an old External. **Upgrade both at the same time. DO NOT upgrade one and leave the other for
+later!**
+
+1. **Let your callers collect any answers that are waiting.** Answers left uncollected from before the
+   upgrade CANNOT be read by the new version. They come back as `500 Decryption error`. Requests
+   still waiting in the queue are fine -- they will be answered after the upgrade.
+2. **Stop Internal, then External.**
+3. **Delete any leftover answers:** remove everything in External's `./data/results/` folder.
+4. **Edit External's `.env`:**
+   - Set `AUTH_TOKEN` to a new value from `openssl rand -hex 32`. **The old `YesItsMe` example, or any
+     token shorter than 32 characters, now stops External from starting!**
+   - Add `INNIE_TOKEN=` with a *different* value from `openssl rand -hex 32`.
+5. **Edit Internal's `.env`:** add the exact same `INNIE_TOKEN` line.
+6. **Copy the new `docker-compose.yml` files** from the repo into both folders, as you did when you
+   installed.
+7. **Start External, then Internal**, and run the tests above again.
+8. **Give the new `AUTH_TOKEN` to every caller and facade you serve.** They get `401 Unauthorized`
+   until they switch. **NEVER give them `INNIE_TOKEN`!**
 
 # API reference
+
+**Every request needs `Authorization: Bearer <your AUTH_TOKEN>`.** The token is case-sensitive.
+These are the errors you can get back, and what they mean:
+
+| Status | Meaning |
+| --- | --- |
+| `401 Unauthorized` | No token, or the wrong one. |
+| `429 Too many failed attempts` | Too many wrong tokens from your address. Wait for the time in `Retry-After`, then try again with the right token. |
+| `429 queue_full` | Too many requests are already waiting. Try again later; `Retry-After` says when. |
+| `413 payload_too_large` | Your request is too big. Query requests are limited to 64 KB by default. |
+| `400` | The request is malformed: bad JSON, not UTF-8, a missing `query_id` or one with characters other than letters, digits, `_` and `-`, or `bindings` that isn't a JSON object. |
+| `404` | No such job -- or the job ID is not a properly formed UUID. **Answers can be collected only ONCE!** After you have fetched one, its job is gone. |
 
 ## `/severance/available_queries`
 
@@ -191,7 +266,7 @@ this list.
 
 **Request:**
 
-    curl -X GET http://localhost:3000/severance/available_queries -H "Authorization: Bearer YesItsMe" -H "Accept: application/json"
+    curl -X GET http://localhost:3000/severance/available_queries -H "Authorization: Bearer $AUTH_TOKEN" -H "Accept: application/json"
 
 **Response:**
 ```
@@ -244,13 +319,21 @@ Using the example above, a valid request body would be:
 **You CAN** submit any `query_id` that appears in `available_queries`, with values for exactly the
 variables it declares.
 
-**You CANNOT** submit a `query_id` that Internal hasn't installed, and you CANNOT add or invent new
-variables -- either will be rejected.
+**You CANNOT** run a `query_id` that Internal hasn't installed -- Internal refuses to run it. **But you
+will NOT get an error back!** External can't see which queries Internal has, so it accepts the
+request, and your job then says `"processing"` forever. **Always check `available_queries` first, and
+spell the `query_id` exactly!**
+
+**You CANNOT** add or invent new variables either. Any binding the query doesn't declare is simply
+ignored -- it never reaches the query.
+
+**`bindings` MUST be a JSON object** (`{"name": "value", ...}`), not a list -- anything else is
+refused with `400`.
 
 **Request:**
 ```
 curl -v -X POST http://localhost:3000/severance/queries -H "Content-Type: application/json" \
-  -H "Authorization: Bearer YesItsMe" -d '{ \
+  -H "Authorization: Bearer $AUTH_TOKEN" -d '{ \
     "query_id": "count", \
     "bindings": { \
       "orphacode": "http://www.orpha.net/ORDO/Orphanet_730" \
