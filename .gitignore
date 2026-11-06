@@ -2,6 +2,10 @@
 # findings and pentest writeups. See Security/INTERNAL_NOTES.md.
 Security/INTERNAL_NOTES.md
 
+# Session handoff notes -- may name specific unpatched/un-triaged findings
+# before the work described in them is done. Not for public disclosure.
+CLAUDE_SESSION_HANDOFF_*.md
+
 *.gem
 *.rbc
 /.config
