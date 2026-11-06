@@ -612,6 +612,12 @@ post '/severance/jobs/:uuid/result' do |uuid|
   result_file = "#{RESULTS_DIR}/#{uuid}.enc"
   processing  = "#{QUEUE_DIR}/#{uuid}.processing.json"
 
+  # Only accept a result for a job Internal actually took from the queue (and has not answered yet).
+  # Without this, anything holding Internal's credentials could plant an answer under any job id --
+  # one still waiting in the queue, or one answered and collected already. The same kind of flaw as
+  # Vantage6's GHSA-82rc-cpqj-9926 ("socket data is trusted without verification").
+  halt 409, 'No such job in progress' unless File.exist?(processing)
+
   # Write the already-encrypted data directly to disk
   File.binwrite(result_file, encrypted_data)
 

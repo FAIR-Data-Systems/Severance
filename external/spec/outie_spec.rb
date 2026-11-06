@@ -209,6 +209,27 @@ RSpec.describe 'External (outie.rb) hardening' do
     let(:job_a) { SecureRandom.uuid }
     let(:job_b) { SecureRandom.uuid }
 
+    # Both jobs have been taken from the queue by Internal (what GET /severance/queue/pull does).
+    before do
+      [job_a, job_b].each { |j| File.write("#{ENV['QUEUE_DIR']}/#{j}.processing.json", '{}') }
+    end
+
+    it 'accepts a result only for a job Internal has taken and not yet answered' do
+      blob = send(:encrypt, 'rows', job_a)
+      pending = SecureRandom.uuid
+      File.write("#{ENV['QUEUE_DIR']}/#{pending}.pending.json", '{}')
+      post "/severance/jobs/#{pending}/result", blob, innie.merge(octet) # still waiting in the queue
+      expect(last_response.status).to eq(409)
+      post "/severance/jobs/#{SecureRandom.uuid}/result", blob, innie.merge(octet) # never existed
+      expect(last_response.status).to eq(409)
+
+      post "/severance/jobs/#{job_a}/result", blob, innie.merge(octet)
+      expect(last_response.status).to eq(200)
+      post "/severance/jobs/#{job_a}/result", blob, innie.merge(octet) # already answered
+      expect(last_response.status).to eq(409)
+      expect(Dir["#{ENV['RESULTS_DIR']}/*"].size).to eq(1)
+    end
+
     it 'delivers a result to the job it was encrypted for' do
       Thread.current[:delivered] = nil
       blob = send(:encrypt, 'secret rows', job_a)

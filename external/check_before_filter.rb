@@ -64,6 +64,9 @@ check(failures, '[external IP, Bearer] POST /severance/jobs/:uuid/result (should
 
 # A caller on an INTERNAL IP presenting INNIE_TOKEN must be able to reach Innie's own routes...
 job_uuid = SecureRandom.uuid # the result route now rejects anything that isn't a canonical UUID
+# ...and any job Internal hasn't taken from the queue (a result is only accepted for a job in progress).
+FileUtils.mkdir_p(ENV.fetch('QUEUE_DIR'))
+File.write(File.join(ENV.fetch('QUEUE_DIR'), "#{job_uuid}.processing.json"), '{}')
 check(failures, '[internal IP, Innie Bearer] GET /severance/queue/pull',
       app.get('/severance/queue/pull', env_for(INTERNAL_IP, innie_bearer)), [204])
 check(failures, '[internal IP, Innie Bearer] POST /severance/jobs/:uuid/result',
