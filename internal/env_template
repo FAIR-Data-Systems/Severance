@@ -8,6 +8,9 @@ TRIPLESTORE_URL=http://localhost:8890/sparql-auth  # Virtuoso's Digest-authentic
 TRIPLESTORE_USER = <your Virtuoso read-only username>
 TRIPLESTORE_PASS = <your Virtuoso read-only password>
 POLL_INTERVAL=10  # seconds
+# true = copy the example queries into an EMPTY ./queries on first start (testing only!
+# every query in ./queries can be run by anyone with External's AUTH_TOKEN)
+SEED_DEMO_QUERIES=false
 # these set the permissions on the ./queries folder so that you can edit it 
 UID=1000   #  at terminal:   id -u  set this to whatever the output is!
 GID=1000   # at terminal:  id -g set this to whatever the output is

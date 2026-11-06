@@ -62,6 +62,17 @@ RSpec.describe 'External (outie.rb) hardening' do
     it 'refuses identical tokens' do
       expect(boot('AUTH_TOKEN' => 'c' * 40, 'INNIE_TOKEN' => 'c' * 40)).to include('must differ')
     end
+
+    it 'reads secrets from *_FILE paths (Docker secrets) instead of the environment' do
+      files = { 'AUTH_TOKEN' => 'd' * 40, 'INNIE_TOKEN' => 'e' * 40, 'ENCRYPTION_KEY_HEX' => 'cd' * 32 }.to_h do |k, v|
+        path = File.join(ROOT, "#{k.downcase}.secret")
+        File.write(path, "#{v}\n")
+        ["#{k}_FILE", path]
+      end
+      expect(boot(files.merge('ENCRYPTION_KEY_HEX' => nil))).to include('BOOTED')
+      expect(boot('AUTH_TOKEN_FILE' => "#{ROOT}/missing", 'INNIE_TOKEN' => 'b' * 40))
+        .to include('AUTH_TOKEN_FILE is set, but')
+    end
   end
 
   describe 'caller authentication' do
@@ -145,6 +156,22 @@ RSpec.describe 'External (outie.rb) hardening' do
       expect(last_response.status).to eq(413)
     end
 
+    it 'refuses multipart bodies before anything parses them, even without a token' do
+      expect(Rack::Multipart::Parser).not_to receive(:parse)
+      expect(Rack::Multipart).not_to receive(:parse_multipart)
+      body = "--b\r\nContent-Disposition: form-data; name=\"query_id\"\r\n\r\ncount\r\n--b--\r\n"
+
+      post '/severance/queries', body, { 'CONTENT_TYPE' => 'multipart/form-data; boundary=b' }
+      expect(last_response.status).to eq(415)
+      post '/severance/queries', body, user.merge('CONTENT_TYPE' => 'multipart/form-data; boundary=b')
+      expect(last_response.status).to eq(415)
+    end
+
+    it 'still accepts a url-encoded form on POST /severance/queries' do
+      post '/severance/queries', 'query_id=count', user.merge('CONTENT_TYPE' => 'application/x-www-form-urlencoded')
+      expect(last_response.status).to eq(201)
+    end
+
     it 'requires bindings to be an object' do
       post '/severance/queries', { query_id: 'count', bindings: ['x'] }.to_json, user.merge(json)
       expect(last_response.status).to eq(400)
@@ -160,9 +187,48 @@ RSpec.describe 'External (outie.rb) hardening' do
     end
   end
 
+  describe 'expiry sweep' do
+    it 'deletes old results and stuck jobs, never pending ones or anything recent' do
+      old = Time.now - (RESULT_TTL_HOURS * 3600) - 60
+      paths = {
+        old_result: "#{ENV['RESULTS_DIR']}/#{SecureRandom.uuid}.enc",
+        old_processing: "#{ENV['QUEUE_DIR']}/#{SecureRandom.uuid}.processing.json",
+        old_pending: "#{ENV['QUEUE_DIR']}/#{SecureRandom.uuid}.pending.json",
+        new_result: "#{ENV['RESULTS_DIR']}/#{SecureRandom.uuid}.enc"
+      }
+      paths.each { |_, p| File.write(p, 'x') }
+      %i[old_result old_processing old_pending].each { |k| File.utime(old, old, paths[k]) }
+
+      expect(sweep_expired!).to eq(results: 1, processing: 1)
+      expect(paths.transform_values { |p| File.exist?(p) })
+        .to eq(old_result: false, old_processing: false, old_pending: true, new_result: true)
+    end
+  end
+
   describe 'results are bound to their job' do
     let(:job_a) { SecureRandom.uuid }
     let(:job_b) { SecureRandom.uuid }
+
+    # Both jobs have been taken from the queue by Internal (what GET /severance/queue/pull does).
+    before do
+      [job_a, job_b].each { |j| File.write("#{ENV['QUEUE_DIR']}/#{j}.processing.json", '{}') }
+    end
+
+    it 'accepts a result only for a job Internal has taken and not yet answered' do
+      blob = send(:encrypt, 'rows', job_a)
+      pending = SecureRandom.uuid
+      File.write("#{ENV['QUEUE_DIR']}/#{pending}.pending.json", '{}')
+      post "/severance/jobs/#{pending}/result", blob, innie.merge(octet) # still waiting in the queue
+      expect(last_response.status).to eq(409)
+      post "/severance/jobs/#{SecureRandom.uuid}/result", blob, innie.merge(octet) # never existed
+      expect(last_response.status).to eq(409)
+
+      post "/severance/jobs/#{job_a}/result", blob, innie.merge(octet)
+      expect(last_response.status).to eq(200)
+      post "/severance/jobs/#{job_a}/result", blob, innie.merge(octet) # already answered
+      expect(last_response.status).to eq(409)
+      expect(Dir["#{ENV['RESULTS_DIR']}/*"].size).to eq(1)
+    end
 
     it 'delivers a result to the job it was encrypted for' do
       Thread.current[:delivered] = nil

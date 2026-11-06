@@ -130,3 +130,52 @@ RSpec.describe 'single-pass substitution (internal/innie.rb)' do
     end.to raise_error(InvalidIriError)
   end
 end
+
+RSpec.describe '#validate_query (internal/innie.rb)' do
+  it 'accepts read queries, even when update words appear where they are not keywords' do
+    query = <<~Q
+      PREFIX ex: <http://example.org/delete#insert>
+      # we never DELETE anything here
+      SELECT ?delete ?insert WHERE {
+        ?s ex:drop ?delete ; ex:label "INSERT DATA { <a> <b> <c> }" .
+        FILTER(bif:contains(?insert, "'clear'"))
+        FILTER(?a < ?b)
+      }
+    Q
+    expect(validate_query(query)).to be(true)
+  end
+
+  it 'refuses every SPARQL Update operation, in any case' do
+    ['INSERT DATA { <a> <b> <c> }',
+     "PREFIX ex: <http://x/>\ndelete where { ?s ?p ?o }",
+     'WITH <http://g> DELETE { ?s ?p ?o } WHERE { ?s ?p ?o }',
+     'CLEAR ALL', 'DROP GRAPH <http://g>', 'LOAD <http://evil/x.ttl>',
+     'CREATE GRAPH <http://g>', 'ADD DEFAULT TO <http://g>', 'MOVE <a> TO <b>', 'COPY <a> TO <b>',
+     "SELECT * WHERE { ?s ?p ?o } ;\nDELETE WHERE { ?s ?p ?o }"].each do |q|
+      expect { validate_query(q) }.to raise_error(UnsafeQueryError), q
+    end
+  end
+
+  it 'still catches an update after a string that contains a comment character' do
+    expect { validate_query("SELECT * WHERE { ?s ?p \"#\" } ;\nDROP ALL") }.to raise_error(UnsafeQueryError)
+  end
+end
+
+RSpec.describe '#check_enumerated! (internal/innie.rb)' do
+  let(:enumerate) { { 'country' => ['http://example.org/countries/Spain', 'http://example.org/countries/France'] } }
+
+  it 'accepts listed values, with or without <...>, and any key case' do
+    expect { check_enumerated!({ 'country' => 'http://example.org/countries/Spain' }, enumerate) }.not_to raise_error
+    expect { check_enumerated!({ 'COUNTRY' => '<http://example.org/countries/France>' }, enumerate) }.not_to raise_error
+  end
+
+  it 'refuses an unlisted value, naming the variable but never the value' do
+    expect { check_enumerated!({ 'country' => 'http://evil.example/x' }, enumerate) }
+      .to raise_error(EnumerateViolationError) { |e| expect(e.message).not_to include('evil') }
+  end
+
+  it 'leaves variables without an enumerate list alone' do
+    expect { check_enumerated!({ 'age' => '42' }, enumerate) }.not_to raise_error
+    expect { check_enumerated!({ 'country' => 'anything' }, {}) }.not_to raise_error
+  end
+end

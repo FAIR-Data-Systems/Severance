@@ -4,7 +4,52 @@ All notable changes to this project are documented here. Format loosely follows 
 
 ## [Unreleased]
 
+## [2.0.0] - 2026-11-06
+
+**Breaking -- read [Upgrading from 1.1.0](external/README.md#upgrading-from-110) first.** New required
+settings on both components (`INNIE_TOKEN`, a 32+ character `AUTH_TOKEN`), and External and Internal
+must be upgraded together. Example queries are no longer installed automatically.
+
 ### Security
+
+- External no longer accepts `multipart/form-data` request bodies (`415`), and they are refused before
+  anything parses them. Sinatra parses request parameters before the authentication filter runs, so
+  Rack's multipart parser was reachable without a token. No Severance route or known facade uses
+  multipart. **If you run your own client or facade that sends multipart, switch it to JSON.**
+- `rack` 3.2.7 -> 3.2.8 in External (GHSA-5v64-555j-wjxm, multipart memory exhaustion).
+- Both images now use a multi-stage build: the compiler toolchain (`build-essential`, and the
+  `linux-libc-dev` kernel headers it brings in) stays in the build stage. On 2026-11-06 this took each
+  image from 243 Trivy findings to 52, including from 2 CRITICALs to none, and from about 637 MB to
+  about 157 MB.
+- First individual reachability research on every remaining finding (`Security/build_register.py`,
+  `MANUAL_DECISIONS`), replacing the bulk "patch immediately" default that the register previously
+  applied to every row -- including rows with no fix available.
+- **Example queries are no longer copied into Internal's `./queries` automatically.** Every query there
+  is live to anyone with `AUTH_TOKEN`, and one example (`patient_filter.rq`) returns person-level rows.
+  Set `SEED_DEMO_QUERIES=true` to copy them in for testing. **Existing installs: delete any example
+  in `./queries` you have not approved.**
+- Internal refuses any query containing a SPARQL Update operation (`INSERT`, `DELETE`, `DROP`, `CLEAR`,
+  `LOAD`, ...): it is left out of the catalogue and never run. Previously `validate_query` was a stub,
+  and a read-only triplestore account was the only safeguard.
+- `#+ enumerate:` lists are now enforced: a binding with an unlisted value is refused. They were
+  advertised to callers but never checked -- and the parser silently dropped every one of them (a list
+  item like `- country:` was taken for a section header).
+- Uncollected results, and jobs stuck in "processing", are deleted after `RESULT_TTL_HOURS` (default 168,
+  i.e. 7 days). Pending jobs are never expired.
+- Secrets can be read from files: `ENCRYPTION_KEY_HEX_FILE`, `AUTH_TOKEN_FILE`, `INNIE_TOKEN_FILE`,
+  `TRIPLESTORE_PASS_FILE` (e.g. Docker secrets), keeping them out of the container environment.
+- **The published 2026-09-22 images still trust the compromised eMudhra/emSign certificate hierarchy**
+  (`emSign ECC Root CA - G3`, `AAA Certificate Services`; October 2026, Debian DSA-6572-1). Images
+  built from this release do not. Until you upgrade, don't let Internal reach External over a network
+  you don't trust.
+- `docker-compose.yml` files now pin each image by digest (`tag@sha256:...`), not by tag alone, so an
+  image replaced under the same tag on Docker Hub is refused -- what happened to Vantage6's registry in
+  March 2026.
+- External accepts a result only for a job Internal has actually taken from the queue (`409`
+  otherwise). Previously anything holding Internal's credentials could plant an answer under any job id.
+- `Security/PEER_ADVISORIES.md`: every published Vantage6 security problem (39 advisories, plus two
+  incidents they never published as advisories) mapped onto Severance -- fixed, safe by design, or
+  still OPEN.
 
 - Query bindings are now substituted in a single pass over the original query text.
 - Internal authenticates its calls to External with a new required `INNIE_TOKEN` (in addition to the
@@ -26,6 +71,29 @@ All notable changes to this project are documented here. Format loosely follows 
 - New optional External settings: `PUBLIC_BASE_URL` (used for the `Location` header instead of the request's
   `Host`), plus the size/queue/throttle limits above. All are documented in `external/README.md`.
 - `external/check_before_filter.rb` updated to the two-token auth model.
+- Scan pipeline: Trivy runs at every severity; Ruby gem findings are recorded at every severity (a MEDIUM
+  `rack` bug that let a forged `Host` into External's `Location` header was hidden by the old
+  CRITICAL/HIGH filter), OS findings at CRITICAL/HIGH and unscored (`UNKNOWN`, e.g. DSA-6572-1).
+  `security-patch.sh` refuses to patch or push an image that does not start.
+- `Security/advisory_watch.py` (notify-only; e.g. for a scheduled Hermes job): reports new peer-project
+  advisories, security lines in their release notes, security-related news articles, gem advisories
+  (RubySec and OSV) for our pinned versions, and Debian security announcements for packages in our
+  images. Each source exists because a real 2026 event appeared there and nowhere else.
+- A job Internal refuses (unknown `query_id`, missing query file, malformed bindings, unlisted
+  `enumerate` value, update query) now gets an empty answer promptly, instead of saying "processing"
+  forever. Internal no longer logs "Registration completed" after a failed registration, and a 401 there
+  now points at a mismatched `INNIE_TOKEN`.
+- Test-only gems (`rspec`, plus `rack-test` for External) are in a `test` group, excluded from both
+  images. `security-patch.sh` now runs External's spec as well as `check_before_filter.rb`, and runs
+  `bundle install` before testing. Internal's suite passes again (the enumerate parser bug above was
+  its one failure), so the pipeline's Internal auto-patches are no longer always reverted.
+- `Security/security-patch.sh` gives every container it starts throwaway `AUTH_TOKEN`/`INNIE_TOKEN`
+  values as well as the encryption key. Since the token requirement above, both services refused to start
+  with only the key, so every OS-patch step and boot smoke test would silently have done nothing.
+- `Security/build_register.py`: researched dispositions can be keyed per image (`(image, cve)`, which
+  wins over a CVE-only entry); package-wide rules (`PACKAGE_DECISIONS`); unresearched findings with no
+  fix available now default to `TRACK` instead of `PATCH`; rows the script generated are recomputed each
+  run instead of being kept forever. Precedence is documented in `Security/VULNERABILITY_TRIAGE.md`.
 
 ### Documentation
 
@@ -35,6 +103,10 @@ All notable changes to this project are documented here. Format loosely follows 
 - Fixed pre-existing errors in `external/README.md`: a still-pending job returns `202 Accepted`, not
   `201 Created`; an uninstalled `query_id` is not rejected with an error but sits as `"processing"`
   forever; undeclared bindings are ignored, not rejected. Curl examples no longer use the `YesItsMe` token.
+- `Security/VULNERABILITY_TRIAGE.md` now opens with a section for partners deciding whether to deploy an
+  image: where the full scan results are, what each `Decision` means for their deployment, and what the
+  register cannot check for them (their host kernel). Linked from the top-level, External and Internal
+  READMEs, which previously did not mention it at all.
 
 ### Credits
 
@@ -42,6 +114,16 @@ All notable changes to this project are documented here. Format loosely follows 
   directed applying them and updating the install docs. The patches were re-tested here against the real
   Gemfiles (Sinatra 4.2.1 / Rack 3.2.7), and that pass found and fixed the Internal-lockout issue in the
   new throttle before release.
+- Mark Wilkinson set the priority for the vulnerability-transparency work: Severance needs at least as
+  much transparency as Sextans-Suite, because External is where data is actually exposed. That framing is
+  why the work went past documentation into the first individual research on every finding, which found
+  the build-toolchain root cause and the token-free multipart path.
+- Mark Wilkinson brought the Vantage6 disclosures into scope (asking whether Severance had dealt with the
+  same problems, and whether Trivy would have caught them), and then suspected that Vantage6's own
+  advisories understated what happened and asked for a wider search. He was right: the search found two
+  incidents never published as advisories -- the compromise of their image registry, which led to the
+  digest pinning here, and the eMudhra CA compromise, which turned out to affect every published
+  Severance and facade image. He also decided that beacon-facade must refuse to run without its key.
 
 ## [1.1.0] - 2026-09-22
 

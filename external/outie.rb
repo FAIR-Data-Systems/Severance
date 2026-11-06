@@ -42,7 +42,35 @@ configure do
   # regardless of RACK_ENV -- Sinatra's development-mode exception page
   # would otherwise intercept them before a custom handler ever runs.
   set :show_exceptions, :after_handler
+  # Rack::MethodOverride (on by default for classic-style apps) reads the POST
+  # body looking for a `_method` field -- i.e. it parses form/multipart bodies
+  # before RefuseMultipart below, or any auth check, gets to see the request.
+  # Nothing here uses `_method`.
+  set :method_override, false
 end
+
+# Refuses multipart/form-data before anything parses it. Sinatra merges
+# `request.params` (which includes a parsed multipart body) in dispatch!,
+# *before* the `before` filter -- so every Rack multipart-parser bug was
+# reachable without a token (e.g. GHSA-5v64-555j-wjxm, rack < 3.2.8: a crafted
+# body is held in memory in full, enough to OOM this 512 MB container). No
+# Severance route or known facade sends multipart -- callers send JSON, or a
+# url-encoded form to POST /severance/queries -- so the whole parser is taken
+# off the reachable surface instead of relying on it being bug-free.
+class RefuseMultipart
+  def initialize(app)
+    @app = app
+  end
+
+  def call(env)
+    if env['CONTENT_TYPE'].to_s.downcase.include?('multipart/')
+      return [415, { 'content-type' => 'application/json' }, ['{"error":"multipart bodies are not accepted"}']]
+    end
+
+    @app.call(env)
+  end
+end
+use RefuseMultipart
 
 # Read once at boot from the same VERSION file the Dockerfile bakes in as an
 # OCI label -- so the running service's version is queryable via GET
@@ -59,7 +87,7 @@ RESULTS_DIR = ENV.fetch('RESULTS_DIR', '/data/results')
 warn '=== Environment Debug ==='
 warn "QUEUE_DIR = #{QUEUE_DIR.inspect}"
 warn "RESULTS_DIR = #{RESULTS_DIR.inspect}"
-warn "ENCRYPTION_KEY_HEX present = #{ENV['ENCRYPTION_KEY_HEX'] ? 'YES' : 'NO'}"
+warn "ENCRYPTION_KEY_HEX present = #{ENV['ENCRYPTION_KEY_HEX'] || ENV['ENCRYPTION_KEY_HEX_FILE'] ? 'YES' : 'NO'}"
 warn "RESULT_FORMAT = #{ENV['RESULT_FORMAT'].inspect}"
 warn '========================='
 
@@ -95,7 +123,22 @@ end
 # everywhere else for exactly this class of mistake (see the IRI/encoding
 # rejection paths in internal/innie.rb).
 EXAMPLE_ENCRYPTION_KEY_HEX = '0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef'
-raw_encryption_key_hex = ENV['ENCRYPTION_KEY_HEX']&.strip
+
+# Reads a secret from `<NAME>_FILE` (a path, e.g. a Docker secret mounted at
+# /run/secrets/...) if that is set, otherwise from `<NAME>` itself. A secret
+# in a plain environment variable is visible to anyone who can run
+# `docker inspect` or read /proc/<pid>/environ; a file can be kept readable by
+# this process only. Kept in sync with the identical helper in internal/innie.rb.
+def env_secret(name)
+  path = ENV["#{name}_FILE"].to_s.strip
+  return ENV[name] if path.empty?
+
+  File.read(path).strip
+rescue SystemCallError => e
+  abort "FATAL: #{name}_FILE is set, but #{path} cannot be read (#{e.class})."
+end
+
+raw_encryption_key_hex = env_secret('ENCRYPTION_KEY_HEX')&.strip
 if raw_encryption_key_hex.nil? || raw_encryption_key_hex.empty?
   abort 'FATAL: ENCRYPTION_KEY_HEX is not set. Generate one with `openssl rand -hex 32` ' \
         'and set it identically on both External and Internal -- refusing to start with no key ' \
@@ -121,7 +164,7 @@ MIN_SECRET_LENGTH = 32
 EXAMPLE_SECRETS = %w[YesItsMe changeme change-me secret password].freeze
 
 def load_secret!(name)
-  value = ENV[name].to_s.strip
+  value = env_secret(name).to_s.strip
   if value.empty?
     abort "FATAL: #{name} is not set. Generate one with `openssl rand -hex 32` -- " \
           'refusing to start with authentication disabled.'
@@ -147,6 +190,47 @@ UUID_RE = /\A\h{8}-\h{4}-\h{4}-\h{4}-\h{12}\z/.freeze
 
 # Content-Type for query results (json or csv)
 CONTENT_TYPE = ENV['RESULT_FORMAT'] == 'csv' ? 'text/csv' : 'application/sparql-results+json'
+
+# How long an uncollected result, or a job stuck in "processing" (Internal
+# took it but never answered), may sit on disk. Results are encrypted, but an
+# answer nobody collects should not wait forever for whoever eventually learns
+# its job id -- and without this, stuck jobs answered "processing" forever.
+# Pending jobs are never expired: Internal being off for a while must not lose
+# requests. 0 disables the sweep.
+RESULT_TTL_HOURS = ENV.fetch('RESULT_TTL_HOURS', 168).to_i
+
+# Deletes results and "processing" job files older than RESULT_TTL_HOURS.
+# Logs counts only, never job ids.
+#
+# @param now [Time] the reference time (injectable for tests)
+# @return [Hash] how many files of each kind were deleted
+def sweep_expired!(now = Time.now)
+  cutoff = now - (RESULT_TTL_HOURS * 3600)
+  expired = lambda do |pattern|
+    Dir[pattern].count do |path|
+      File.mtime(path) < cutoff && File.delete(path)
+    rescue Errno::ENOENT
+      false # collected or swept concurrently
+    end
+  end
+  counts = { results: expired.call("#{RESULTS_DIR}/*.enc"),
+             processing: expired.call("#{QUEUE_DIR}/*.processing.json") }
+  warn "Expired #{counts[:results]} uncollected result(s), #{counts[:processing]} stuck job(s)" if counts.values.sum.positive?
+  counts
+end
+
+if RESULT_TTL_HOURS.positive? && !Sinatra::Application.test?
+  Thread.new do
+    loop do
+      begin
+        sweep_expired!
+      rescue StandardError => e
+        warn "⚠ Expiry sweep failed: #{e.class} - #{e.message}"
+      end
+      sleep 3600
+    end
+  end
+end
 
 # Create required directories on startup
 begin
@@ -527,6 +611,12 @@ post '/severance/jobs/:uuid/result' do |uuid|
 
   result_file = "#{RESULTS_DIR}/#{uuid}.enc"
   processing  = "#{QUEUE_DIR}/#{uuid}.processing.json"
+
+  # Only accept a result for a job Internal actually took from the queue (and has not answered yet).
+  # Without this, anything holding Internal's credentials could plant an answer under any job id --
+  # one still waiting in the queue, or one answered and collected already. The same kind of flaw as
+  # Vantage6's GHSA-82rc-cpqj-9926 ("socket data is trusted without verification").
+  halt 409, 'No such job in progress' unless File.exist?(processing)
 
   # Write the already-encrypted data directly to disk
   File.binwrite(result_file, encrypted_data)

@@ -1,21 +1,33 @@
-FROM ruby:3.2-slim
+# Two stages: native gems are compiled in `build`, and only the installed gems
+# are copied into the runtime image -- build-essential (and the linux-libc-dev
+# kernel headers it drags in, the source of most of this image's Trivy
+# findings) never reaches it. See external/Dockerfile for the numbers.
+FROM ruby:3.2-slim AS build
+
+# Test-only gems (rspec, rack-test) are for the pipeline's test step on the host,
+# never part of the image.
+ENV BUNDLE_WITHOUT=test
+
+RUN apt-get update -qq && \
+    apt-get install -y --no-install-recommends build-essential \
+    && rm -rf /var/lib/apt/lists/*
+
+WORKDIR /app
+COPY Gemfile Gemfile.lock ./
+RUN bundle install --jobs 4 --retry 3
 
 # Plain public image, not a "hardened" vendor variant -- real-world security
 # scan comparisons (own patching pipeline: shell in, OS-level upgrade,
 # recommit) showed better results from this than from Docker Hardened
 # Images, so that's the deliberate choice here, not an oversight.
-
-# Install only build dependencies
-RUN apt-get update -qq && \
-    apt-get install -y --no-install-recommends \
-    build-essential \
-    && rm -rf /var/lib/apt/lists/*
+FROM ruby:3.2-slim
+ENV BUNDLE_WITHOUT=test
 
 WORKDIR /app
 
-# === Gem caching layer ===
+# === Gems, as installed (and compiled) by the build stage ===
 COPY Gemfile Gemfile.lock ./
-RUN bundle install --jobs 4 --retry 3
+COPY --from=build /usr/local/bundle /usr/local/bundle
 
 # net-imap ships as a Ruby "default gem" baked into the base image at
 # whatever version that Ruby patch release bundled (0.3.9 here) -- pinning

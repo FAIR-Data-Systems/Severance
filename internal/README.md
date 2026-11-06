@@ -13,6 +13,11 @@ and working** -- see [Installing External](../external/README.md) first if you h
 1.1.0](../external/README.md#upgrading-from-110) in External's guide. It covers both components, and
 **upgrading only one of them breaks the pair!**
 
+The known vulnerabilities of the exact Internal image you're about to run, each with our judgment
+on whether it can be reached, are published in
+[Security/VULNERABILITY_TRIAGE.md](../Security/VULNERABILITY_TRIAGE.md). Read that before you
+deploy or update.
+
 ## What you need before you start
 
 1. **A Virtuoso instance, up and running**, containing your data.
@@ -45,6 +50,7 @@ and working** -- see [Installing External](../external/README.md) first if you h
     TRIPLESTORE_USER = <your Virtuoso read-only username>
     TRIPLESTORE_PASS = <your Virtuoso read-only password>
     POLL_INTERVAL=10  # seconds
+    SEED_DEMO_QUERIES=false  # true ONLY for testing -- see "Managing your queries" below
     UID=1000   #  at terminal:   id -u
     GID=1000   # at terminal:  id -g
 
@@ -56,6 +62,11 @@ and working** -- see [Installing External](../external/README.md) first if you h
   for callers. `INNIE_TOKEN` is the separate secret only Internal uses, and External refuses
   `AUTH_TOKEN` on the routes Internal calls. If they don't match, External's log shows `Auth failed`
   every time Internal polls, and **no request is ever answered.**
+- **Secrets as files (optional).** Instead of putting `ENCRYPTION_KEY_HEX`, `INNIE_TOKEN` or
+  `TRIPLESTORE_PASS` in `.env`, you can set `ENCRYPTION_KEY_HEX_FILE`, `INNIE_TOKEN_FILE` or
+  `TRIPLESTORE_PASS_FILE` to the path of a file holding the value (e.g. a Docker secret under
+  `/run/secrets/`). A value in `.env` ends up in the container's environment, where anyone who can
+  run `docker inspect` can read it.
 - **`RESULT_FORMAT`** -- must also match External's setting, exactly.
 - **`EXTERNAL_URL`** -- the real, reachable address of your External instance.
 - **`TRIPLESTORE_URL`/`TRIPLESTORE_USER`/`TRIPLESTORE_PASS`** -- read the warning below before you set
@@ -142,15 +153,28 @@ Once External is confirmed working:
 ## Managing your queries
 
 Your `./queries` folder holds the queries Severance is allowed to run -- **nothing outside this folder
-can ever be queried.**
+can ever be queried.** And **every query in this folder is LIVE!** Anyone holding External's
+`AUTH_TOKEN` can run it, with values of their choosing. Put a query here only if you have approved
+everything it can return.
 
-- On first start, this folder is populated with example queries.
+- **This folder starts EMPTY.** Nothing can be queried until you add your own queries. (Before
+  2026-11, the example queries were copied in automatically -- **if you installed before then, look
+  in your `./queries` folder now and delete every example you have not approved!** One of them,
+  `patient_filter.rq`, returns individual people's records.)
+- **For testing only**, set `SEED_DEMO_QUERIES=true` in `.env` and start Internal with an empty
+  `./queries`: the examples are copied in. **Delete the ones you haven't approved before real data
+  goes in!**
 - **You CAN edit or add queries here** -- your changes survive a `compose down`/`compose up`.
-- **You CAN reset to the examples** -- delete everything in `./queries` and restart; it will be
-  re-populated.
 - **The folder is re-read every time Internal polls External** -- you can change queries here at any
   time and they'll take effect on the next polling cycle, with no restart needed.
+- **Severance only ever READS.** A query that would change data (`INSERT`, `DELETE`, `DROP`,
+  `CLEAR`, `LOAD` and the other SPARQL Update operations) is refused: it is left out of the list
+  callers see, and never run. **This does NOT replace a read-only triplestore account!** Use one
+  anyway (see above) -- this check is the second line of defence, not the first.
+- **`#+ enumerate:` lists are enforced.** If a query lists the allowed values for a variable, a
+  request with any other value is refused (the caller gets an empty answer), so you can use
+  `enumerate` to limit what a query can be asked.
 
 See [the query-authoring guide](./sample_queries/README.md) for how to write a query so Severance (and
 the UI on the External side) can understand it correctly. (That guide lives next to the example queries
-themselves, which is also where your running `./queries` folder gets its starting content from.)
+themselves, which `SEED_DEMO_QUERIES=true` copies in.)
