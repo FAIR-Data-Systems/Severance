@@ -11,7 +11,10 @@ Two sources, because the 2026-11-06 Vantage6 case showed neither is enough on it
    itself because GitHub's global advisory database and OSV (what Trivy uses) can lag by weeks or
    never get them: Vantage6's HIGH advisories of 2026-09-22 were still absent from both on
    2026-11-06.
-2. OUR OWN DEPENDENCIES: every gem version pinned in the lockfiles below, checked against OSV.
+   Plus the peer's own release notes and news page, because some of the most serious events never
+   become advisories at all (see PEER_PAGES).
+2. OUR OWN DEPENDENCIES: every gem version pinned in the lockfiles below, checked against RubySec
+   and OSV; and Debian's security announcements for the packages inside our images.
 
 Prints exactly "NO NEW ADVISORIES" when there is nothing new. Any source that fails is reported
 as "WATCHER ERROR: ..." -- a silently broken watcher is worse than none. The first run records
@@ -35,6 +38,34 @@ import urllib.request
 PEER_REPOS = [
     "vantage6/vantage6",
 ]
+
+# Places where peer projects announce security fixes and incidents that NEVER become GitHub advisories.
+# Vantage6's two biggest events of 2026 were in neither: the April compromise of their image registry
+# (malware injected into published images -- only on their news page) and the October eMudhra CA
+# incident (only in their release notes). Modes:
+#   "lines" -- report new lines of the page that mention security (for release notes / changelogs)
+#   "links" -- report new articles linked under the given path whose text mentions security (news pages)
+PEER_PAGES = [
+    ("vantage6 release notes", "https://docs.vantage6.ai/en/latest/release_notes.html", "lines", None),
+    ("vantage6 news", "https://distributedlearning.ai/news/", "links", "/news/"),
+]
+# "security", not "secur": vantage6's site puts "Secure Insight eXchange" on every page.
+SECURITY_WORDS = re.compile(r"\bsecurity\b|vulnerab|\bCVE-|\bGHSA-|compromis|malicious|malware|unauthori[sz]ed|"
+                            r"breach|incident|exploit|attack|leak|inject|distrust", re.I)
+
+# Debian's security announcements, for the Debian source packages inside Severance's runtime images
+# (ruby:3.2-slim, Debian 13). An announcement can arrive here before Trivy scores it -- DSA-6572-1
+# (ca-certificates still trusting the compromised eMudhra CA hierarchy) was only ever UNKNOWN in Trivy.
+# Regenerate the list after a base-image change with, in each runtime image:
+#   dpkg-query -W -f '${source:Package}\n' | sort -u
+DEBIAN_DSA_FEED = "https://www.debian.org/security/dsa-long.rdf"
+DEBIAN_SOURCE_PACKAGES = set("""
+acl apt attr audit base-files base-passwd bash bzip2 ca-certificates cdebconf coreutils dash db5.3
+debconf debian-archive-keyring debianutils diffutils dpkg findutils gcc-14 glibc gmp gosu grep gzip
+hostname init-system-helpers libbsd libcap2 libcap-ng libffi libmd libseccomp libselinux libsemanage
+libsepol libxcrypt libyaml libzstd lz4 mawk ncurses nettle openssl pam pcre2 perl readline
+rust-sequoia-sqv sed shadow sqlite3 systemd sysvinit tar tzdata util-linux xxhash xz-utils zlib
+""".split())
 
 # Lockfiles of everything we ship, as public raw URLs.
 LOCKFILES = {
@@ -83,6 +114,96 @@ def peer_advisories(repo):
                      f"  {a.get('html_url') or ''}\n"
                      "  -> To consider: could Severance have the same KIND of flaw?"),
         })
+    return items
+
+
+def page_text(html_text):
+    """Visible text of an HTML page, one block per line, whitespace normalised."""
+    import html
+    html_text = re.sub(r"(?is)<(script|style)\b.*?</\1>", " ", html_text)
+    # Blocks end only at block-level tags: source HTML often wraps a single sentence over several lines.
+    html_text = re.sub(r"(?i)<(br|/p|/li|/h\d|/div|/tr|/dd|/dt|/section|/article|/nav|/footer)\b[^>]*>",
+                       "\x00", html_text)
+    text = html.unescape(re.sub(r"<[^>]+>", " ", html_text))
+    return [b for b in (re.sub(r"\s+", " ", block).strip() for block in text.split("\x00")) if b]
+
+
+def page_lines(label, url):
+    """New security-relevant lines of a release-notes page. No date is known for a line, so on a first
+    run they are recorded silently rather than shown."""
+    import hashlib
+    items = []
+    for line in page_text(http_text(url)):
+        if len(line) >= 20 and SECURITY_WORDS.search(line):
+            digest = hashlib.sha1(line.encode()).hexdigest()[:16]
+            items.append({"key": f"page:{label}:{digest}", "published": "",
+                          "text": (f"[PEER RELEASE NOTES] {label}\n  {line[:400]}\n  {url}\n"
+                                   "  -> To consider: does this fix a KIND of flaw Severance could have?")})
+    return items
+
+
+def page_links(label, url, prefix, first_run):
+    """New articles linked from a news page under `prefix`. Each new one is fetched (only when new) and
+    reported if its text mentions security; others are just recorded as seen."""
+    from urllib.parse import urljoin, urlparse
+    host = urlparse(url).netloc
+    index_html = http_text(url)
+    # Text every page of the site shares (menus, footer, taglines) -- removed from articles before they
+    # are checked, so boilerplate never makes an article look security-related.
+    boilerplate = set(page_text(index_html))
+    links = set()
+    for href in re.findall(r'href="([^"#]+)', index_html):
+        full = urljoin(url, href)
+        path = urlparse(full).path
+        if urlparse(full).netloc == host and path.startswith(prefix) and path.rstrip("/") != prefix.rstrip("/"):
+            links.add(full)
+    items = []
+    for link in sorted(links):
+        item = {"key": f"news:{label}:{link}", "published": "", "relevant": False, "link": link,
+                "label": label, "boilerplate": boilerplate}
+        items.append(item)
+    return items
+
+
+def describe_news(item):
+    """Fetches a new article and decides whether it mentions security."""
+    try:
+        text = " ".join(b for b in page_text(http_text(item["link"])) if b not in item["boilerplate"])
+    except (urllib.error.URLError, OSError, ValueError) as e:
+        item["relevant"] = True  # can't tell -- report it rather than risk missing an incident notice
+        text = f"(could not fetch the article to check it: {type(e).__name__})"
+    match = SECURITY_WORDS.search(text) or SECURITY_WORDS.search(item["link"])
+    if match:
+        item["relevant"] = True
+        start = max(0, match.start() - 150)
+        title = item["link"].rstrip("/").rsplit("/", 1)[-1].replace("-", " ")
+        item["text"] = (f"[PEER NEWS] {item['label']}: \"{title}\"\n  ...{text[start:start + 350]}...\n"
+                        f"  {item['link']}\n"
+                        "  -> To consider: is this an incident (e.g. compromised images or keys) that touches "
+                        "anything we use, or a kind of flaw Severance could have?")
+    return item
+
+
+def debian_dsas():
+    """Debian security announcements for packages inside our images."""
+    import xml.etree.ElementTree as ET
+    req = urllib.request.Request(DEBIAN_DSA_FEED, headers={"User-Agent": "severance-advisory-watch"})
+    with urllib.request.urlopen(req, timeout=TIMEOUT) as r:
+        root = ET.fromstring(r.read())
+    ns = {"rss": "http://purl.org/rss/1.0/", "dc": "http://purl.org/dc/elements/1.1/"}
+    items = []
+    for it in root.findall("rss:item", ns):
+        title = (it.findtext("rss:title", "", ns) or "").strip()
+        m = re.match(r"^(DSA-\d+-\d+)\s+(\S+)", title)
+        if not m or m.group(2) not in DEBIAN_SOURCE_PACKAGES:
+            continue
+        date = (it.findtext("dc:date", "", ns) or "")[:10]
+        items.append({"key": f"dsa:{m.group(1)}", "published": date,
+                      "text": (f"[OUR BASE OS] Debian {title}  published {date or '?'}\n"
+                               f"  {(it.findtext('rss:description', '', ns) or '').strip()[:300]}\n"
+                               f"  {(it.findtext('rss:link', '', ns) or '').strip()}\n"
+                               "  -> To consider: this package is inside Severance's images; the next "
+                               "security-patch.sh run applies the fix -- run it sooner?")})
     return items
 
 
@@ -241,6 +362,15 @@ def main():
             found += peer_advisories(repo)
         except Exception as e:  # noqa: BLE001 -- report every failure, never stop the others
             errors.append(f"WATCHER ERROR: peer advisories for {repo}: {type(e).__name__}: {e}")
+    for label, url, mode, prefix in PEER_PAGES:
+        try:
+            found += page_lines(label, url) if mode == "lines" else page_links(label, url, prefix, state is None)
+        except Exception as e:  # noqa: BLE001
+            errors.append(f"WATCHER ERROR: {label} ({url}): {type(e).__name__}: {e}")
+    try:
+        found += debian_dsas()
+    except Exception as e:  # noqa: BLE001
+        errors.append(f"WATCHER ERROR: Debian security announcements: {type(e).__name__}: {e}")
     lockfiles = {}
     for label, url in LOCKFILES.items():
         try:
@@ -263,6 +393,13 @@ def main():
     found = list({i["key"]: i for i in reversed(found)}.values())[::-1]
     new = [i for i in found if i["key"] not in seen]
     new = [describe_dependency(i) if i["key"].startswith("dep:") else i for i in new]
+    # News articles: on a first run just record them (no dates, and fetching every old article is
+    # pointless); afterwards fetch each NEW one and keep it only if it mentions security.
+    if state is None:
+        new = [i for i in new if not i["key"].startswith("news:")]
+    else:
+        new = [describe_news(i) if i["key"].startswith("news:") else i for i in new]
+        new = [i for i in new if i.get("relevant", True)]
 
     out = list(errors)
     if state is None:

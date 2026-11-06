@@ -9,7 +9,11 @@ require 'csv'
 #   other)       made Rack::Request#base_url return a forged Host header verbatim -- which outie.rb
 #                used for its Location header -- and the old CRITICAL/HIGH-only filter hid it.
 # security-patch.sh therefore scans at every severity; this is where the line is drawn.
-OS_SEVERITIES = %w[CRITICAL HIGH].freeze
+#
+# UNKNOWN is recorded for OS packages too: an advisory nobody has scored yet is not a low-risk one.
+# Debian's DSA-6572-1 (ca-certificates still trusting the compromised eMudhra/emSign CA hierarchy,
+# October 2026) is reported by Trivy only as UNKNOWN -- a CRITICAL/HIGH-only filter dropped it.
+OS_SEVERITIES = %w[CRITICAL HIGH UNKNOWN].freeze
 
 def recorded?(result, severity)
   result['Class'] == 'os-pkgs' ? OS_SEVERITIES.include?(severity) : true
