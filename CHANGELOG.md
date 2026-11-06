@@ -6,6 +6,19 @@ All notable changes to this project are documented here. Format loosely follows 
 
 ### Security
 
+- External no longer accepts `multipart/form-data` request bodies (`415`), and they are refused before
+  anything parses them. Sinatra parses request parameters before the authentication filter runs, so
+  Rack's multipart parser was reachable without a token. No Severance route or known facade uses
+  multipart. **If you run your own client or facade that sends multipart, switch it to JSON.**
+- `rack` 3.2.7 -> 3.2.8 in External (GHSA-5v64-555j-wjxm, multipart memory exhaustion).
+- Both images now use a multi-stage build: the compiler toolchain (`build-essential`, and the
+  `linux-libc-dev` kernel headers it brings in) stays in the build stage. On 2026-11-06 this took each
+  image from 243 Trivy findings to 52, including from 2 CRITICALs to none, and from about 637 MB to
+  about 157 MB.
+- First individual reachability research on every remaining finding (`Security/build_register.py`,
+  `MANUAL_DECISIONS`), replacing the bulk "patch immediately" default that the register previously
+  applied to every row -- including rows with no fix available.
+
 - Query bindings are now substituted in a single pass over the original query text.
 - Internal authenticates its calls to External with a new required `INNIE_TOKEN` (in addition to the
   `ALLOWED_INTERNAL_IPS` filter). **Breaking:** set `INNIE_TOKEN` in both `.env` files.
@@ -26,6 +39,13 @@ All notable changes to this project are documented here. Format loosely follows 
 - New optional External settings: `PUBLIC_BASE_URL` (used for the `Location` header instead of the request's
   `Host`), plus the size/queue/throttle limits above. All are documented in `external/README.md`.
 - `external/check_before_filter.rb` updated to the two-token auth model.
+- `Security/security-patch.sh` gives every container it starts throwaway `AUTH_TOKEN`/`INNIE_TOKEN`
+  values as well as the encryption key. Since the token requirement above, both services refused to start
+  with only the key, so every OS-patch step and boot smoke test would silently have done nothing.
+- `Security/build_register.py`: researched dispositions can be keyed per image (`(image, cve)`, which
+  wins over a CVE-only entry); package-wide rules (`PACKAGE_DECISIONS`); unresearched findings with no
+  fix available now default to `TRACK` instead of `PATCH`; rows the script generated are recomputed each
+  run instead of being kept forever. Precedence is documented in `Security/VULNERABILITY_TRIAGE.md`.
 
 ### Documentation
 
@@ -35,6 +55,10 @@ All notable changes to this project are documented here. Format loosely follows 
 - Fixed pre-existing errors in `external/README.md`: a still-pending job returns `202 Accepted`, not
   `201 Created`; an uninstalled `query_id` is not rejected with an error but sits as `"processing"`
   forever; undeclared bindings are ignored, not rejected. Curl examples no longer use the `YesItsMe` token.
+- `Security/VULNERABILITY_TRIAGE.md` now opens with a section for partners deciding whether to deploy an
+  image: where the full scan results are, what each `Decision` means for their deployment, and what the
+  register cannot check for them (their host kernel). Linked from the top-level, External and Internal
+  READMEs, which previously did not mention it at all.
 
 ### Credits
 
@@ -42,6 +66,10 @@ All notable changes to this project are documented here. Format loosely follows 
   directed applying them and updating the install docs. The patches were re-tested here against the real
   Gemfiles (Sinatra 4.2.1 / Rack 3.2.7), and that pass found and fixed the Internal-lockout issue in the
   new throttle before release.
+- Mark Wilkinson set the priority for the vulnerability-transparency work: Severance needs at least as
+  much transparency as Sextans-Suite, because External is where data is actually exposed. That framing is
+  why the work went past documentation into the first individual research on every finding, which found
+  the build-toolchain root cause and the token-free multipart path.
 
 ## [1.1.0] - 2026-09-22
 

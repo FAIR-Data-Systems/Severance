@@ -70,6 +70,15 @@ the query you need doesn't exist there yet, you must negotiate with the data pro
 18. Request sizes, answer sizes and the length of the queue are all capped, so a flood of requests cannot fill External's disk.
 19. Binding values and the final, filled-in query text are never written to the logs.
 
+### Known vulnerabilities in our images -- published in full
+
+**Before you deploy or update, look at what our scanner found in the exact images you're about
+to run!** Every image we publish is scanned for CRITICAL and HIGH vulnerabilities, and every
+finding is published, each with our individual judgment on whether it can actually be reached in
+Severance and why. Start with [Security/VULNERABILITY_TRIAGE.md](Security/VULNERABILITY_TRIAGE.md)
+-- its first section is written for you, and tells you how to read the rest. **A long list of
+findings is NOT the same as a long list of risks!** Read the `Decision` column, not the count.
+
 ### Threat model
 
 **A note on how this and the list below are produced:** several of the items above and the attack

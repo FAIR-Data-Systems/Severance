@@ -13,6 +13,11 @@ and working** -- see [Installing External](../external/README.md) first if you h
 1.1.0](../external/README.md#upgrading-from-110) in External's guide. It covers both components, and
 **upgrading only one of them breaks the pair!**
 
+The known vulnerabilities of the exact Internal image you're about to run, each with our judgment
+on whether it can be reached, are published in
+[Security/VULNERABILITY_TRIAGE.md](../Security/VULNERABILITY_TRIAGE.md). Read that before you
+deploy or update.
+
 ## What you need before you start
 
 1. **A Virtuoso instance, up and running**, containing your data.

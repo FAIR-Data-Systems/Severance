@@ -47,6 +47,14 @@ trap 'rm -f "${AUTOPATCH_QUEUE}"' EXIT
 # All progress output below goes to stderr; the final `fairdatasystems/
 # <name>:<timestamp>` tag is the only thing written to stdout, so callers can
 # capture it with `tag=$(patch_image ...)` while still seeing live progress.
+# Random, single-use secrets for a container that only ever exists to be patched or smoke-tested here,
+# never to serve real traffic. Printed as `docker run` -e flags (hex only, so safe unquoted).
+throwaway_env() {
+  echo "-e ENCRYPTION_KEY_HEX=$(openssl rand -hex 32)" \
+       "-e AUTH_TOKEN=$(openssl rand -hex 32)" \
+       "-e INNIE_TOKEN=$(openssl rand -hex 32)"
+}
+
 patch_image() {
   local name="$1" build_dir="$2" version_file="$3" version_arg="$4" test_cmd="${5:-}"
   local build_tag="${name}:build-${timestamp}"
@@ -72,9 +80,12 @@ patch_image() {
   # it. This key is thrown away with the container once patching is done; it
   # never serves real traffic, so it doesn't need to be the deployment's
   # real key.
-  local patch_key
-  patch_key=$(openssl rand -hex 32)
-  docker run -d --name "${name}" -e "ENCRYPTION_KEY_HEX=${patch_key}" "${build_tag}" >&2
+  #
+  # Since the 2026-10-23 hardening, outie.rb also refuses to start without AUTH_TOKEN and INNIE_TOKEN
+  # (>= 32 chars, different from each other), and innie.rb without INNIE_TOKEN -- same fail-closed
+  # reasoning, same consequence if missing here: every patch step below would silently do nothing.
+  # throwaway_env generates a fresh, never-reused set for each container this script starts.
+  docker run -d --name "${name}" $(throwaway_env) "${build_tag}" >&2
   sleep 2
   echo "updating ${name}" >&2
   docker exec "${name}" apt-get -y update >&2
@@ -120,7 +131,7 @@ patch_image() {
       if [ "${rebuild_ok}" -eq 0 ] && [ "${tests_ok}" -eq 0 ]; then
         docker rm -f "${name}-autopatch-smoketest" >/dev/null 2>&1 || true
         docker run -d --name "${name}-autopatch-smoketest" \
-          -e "ENCRYPTION_KEY_HEX=$(openssl rand -hex 32)" "${autopatch_build_tag}" >&2
+          $(throwaway_env) "${autopatch_build_tag}" >&2
         sleep 3
         if docker ps --filter "name=${name}-autopatch-smoketest" --filter "status=running" \
              --format '{{.Names}}' | grep -q "^${name}-autopatch-smoketest\$"; then
@@ -132,8 +143,7 @@ patch_image() {
       if [ "${rebuild_ok}" -eq 0 ] && [ "${tests_ok}" -eq 0 ] && [ "${boot_ok}" -eq 0 ]; then
         echo "auto-patch verified: build OK, tests OK, boot OK -- keeping the change and re-patching/re-scanning" >&2
         docker rm -f "${name}" >/dev/null 2>&1 || true
-        patch_key=$(openssl rand -hex 32)
-        docker run -d --name "${name}" -e "ENCRYPTION_KEY_HEX=${patch_key}" "${autopatch_build_tag}" >&2
+        docker run -d --name "${name}" $(throwaway_env) "${autopatch_build_tag}" >&2
         sleep 2
         docker exec "${name}" apt-get -y update >&2
         docker exec "${name}" apt-get -y dist-upgrade --fix-missing >&2

@@ -13,6 +13,12 @@ Keep that in mind while you read the rest of this file.
 first! This release needs new settings on BOTH External and Internal, and upgrading only one of them
 breaks the pair.
 
+**External is the part of Severance that is exposed to the network -- check its known
+vulnerabilities before you deploy or update it!** Every finding for the exact image tag in your
+`docker-compose.yml` is published, with our reasoning, in
+[Security/VULNERABILITY_TRIAGE.md](../Security/VULNERABILITY_TRIAGE.md). Pay special attention to
+any `PATCH` row for `sevexternal`, and ask us about it.
+
 ## What you need before you start
 
 1. `docker compose` installed on your server.
@@ -254,6 +260,7 @@ These are the errors you can get back, and what they mean:
 | `401 Unauthorized` | No token, or the wrong one. |
 | `429 Too many failed attempts` | Too many wrong tokens from your address. Wait for the time in `Retry-After`, then try again with the right token. |
 | `429 queue_full` | Too many requests are already waiting. Try again later; `Retry-After` says when. |
+| `415` | You sent a `multipart/form-data` body. **Severance never accepts multipart!** Send JSON (or a url-encoded form). |
 | `413 payload_too_large` | Your request is too big. Query requests are limited to 64 KB by default. |
 | `400` | The request is malformed: bad JSON, not UTF-8, a missing `query_id` or one with characters other than letters, digits, `_` and `-`, or `bindings` that isn't a JSON object. |
 | `404` | No such job -- or the job ID is not a properly formed UUID. **Answers can be collected only ONCE!** After you have fetched one, its job is gone. |
