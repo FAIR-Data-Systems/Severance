@@ -42,7 +42,35 @@ configure do
   # regardless of RACK_ENV -- Sinatra's development-mode exception page
   # would otherwise intercept them before a custom handler ever runs.
   set :show_exceptions, :after_handler
+  # Rack::MethodOverride (on by default for classic-style apps) reads the POST
+  # body looking for a `_method` field -- i.e. it parses form/multipart bodies
+  # before RefuseMultipart below, or any auth check, gets to see the request.
+  # Nothing here uses `_method`.
+  set :method_override, false
 end
+
+# Refuses multipart/form-data before anything parses it. Sinatra merges
+# `request.params` (which includes a parsed multipart body) in dispatch!,
+# *before* the `before` filter -- so every Rack multipart-parser bug was
+# reachable without a token (e.g. GHSA-5v64-555j-wjxm, rack < 3.2.8: a crafted
+# body is held in memory in full, enough to OOM this 512 MB container). No
+# Severance route or known facade sends multipart -- callers send JSON, or a
+# url-encoded form to POST /severance/queries -- so the whole parser is taken
+# off the reachable surface instead of relying on it being bug-free.
+class RefuseMultipart
+  def initialize(app)
+    @app = app
+  end
+
+  def call(env)
+    if env['CONTENT_TYPE'].to_s.downcase.include?('multipart/')
+      return [415, { 'content-type' => 'application/json' }, ['{"error":"multipart bodies are not accepted"}']]
+    end
+
+    @app.call(env)
+  end
+end
+use RefuseMultipart
 
 # Read once at boot from the same VERSION file the Dockerfile bakes in as an
 # OCI label -- so the running service's version is queryable via GET

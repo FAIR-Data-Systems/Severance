@@ -1,15 +1,29 @@
-FROM ruby:3.2-slim
+# Two stages: native gems are compiled in `build`, and only the installed gems
+# are copied into the runtime image. build-essential (gcc, libc6-dev, dpkg-dev,
+# perl, and linux-libc-dev -- 2,500+ kernel header files) is needed to compile
+# gems, never to run them. Leaving it in the runtime image was the source of
+# most of this image's Trivy findings (182 of 243 on 2026-11-06, including
+# every CRITICAL) -- kernel CVEs reported against header files that contain no
+# executable code, in a container that runs the host's kernel anyway.
+FROM ruby:3.2-slim AS build
+
+RUN apt-get update -qq && \
+    apt-get install -y --no-install-recommends build-essential \
+    && rm -rf /var/lib/apt/lists/*
+
+WORKDIR /app
+COPY Gemfile Gemfile.lock ./
+RUN bundle install --jobs 4 --retry 3
 
 # Plain public image, not a "hardened" vendor variant -- real-world security
 # scan comparisons (own patching pipeline: shell in, OS-level upgrade,
 # recommit) showed better results from this than from Docker Hardened
 # Images, so that's the deliberate choice here, not an oversight.
+FROM ruby:3.2-slim
 
-# Install build deps + gosu (for dropping privileges safely)
+# gosu (for dropping privileges safely) -- the only package the runtime needs
 RUN apt-get update -qq && \
-    apt-get install -y --no-install-recommends \
-      build-essential \
-      gosu \
+    apt-get install -y --no-install-recommends gosu \
     && rm -rf /var/lib/apt/lists/*
 
 # Create non-root user/group. UID is pinned to 1000 (matching
@@ -24,9 +38,10 @@ RUN groupadd -r -g 1000 severance && \
 
 WORKDIR /app
 
-# Gem caching layer
+# Gems as installed (and compiled) by the build stage; /usr/local/bundle is the
+# official ruby image's GEM_HOME/BUNDLE_PATH.
 COPY Gemfile Gemfile.lock ./
-RUN bundle install --jobs 4 --retry 3
+COPY --from=build /usr/local/bundle /usr/local/bundle
 
 # net-imap ships as a Ruby "default gem" baked into the base image at
 # whatever version that Ruby patch release bundled (0.3.9 here) -- pinning

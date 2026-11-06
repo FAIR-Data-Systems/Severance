@@ -145,6 +145,22 @@ RSpec.describe 'External (outie.rb) hardening' do
       expect(last_response.status).to eq(413)
     end
 
+    it 'refuses multipart bodies before anything parses them, even without a token' do
+      expect(Rack::Multipart::Parser).not_to receive(:parse)
+      expect(Rack::Multipart).not_to receive(:parse_multipart)
+      body = "--b\r\nContent-Disposition: form-data; name=\"query_id\"\r\n\r\ncount\r\n--b--\r\n"
+
+      post '/severance/queries', body, { 'CONTENT_TYPE' => 'multipart/form-data; boundary=b' }
+      expect(last_response.status).to eq(415)
+      post '/severance/queries', body, user.merge('CONTENT_TYPE' => 'multipart/form-data; boundary=b')
+      expect(last_response.status).to eq(415)
+    end
+
+    it 'still accepts a url-encoded form on POST /severance/queries' do
+      post '/severance/queries', 'query_id=count', user.merge('CONTENT_TYPE' => 'application/x-www-form-urlencoded')
+      expect(last_response.status).to eq(201)
+    end
+
     it 'requires bindings to be an object' do
       post '/severance/queries', { query_id: 'count', bindings: ['x'] }.to_json, user.merge(json)
       expect(last_response.status).to eq(400)
