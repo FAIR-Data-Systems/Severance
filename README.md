@@ -12,7 +12,7 @@ where there is no communication between someone's "public facing self" and their
 transition happens while riding the elevator to their office (the project logo). The outside world
 is completely excluded from the internal, very sensitive business.
 
-**Version:** `1.1.0` (see [`VERSION`](VERSION); the running services also report it themselves --
+**Version:** `2.0.0` (see [`VERSION`](VERSION); the running services also report it themselves --
 External's `GET /severance` includes it in its plain-text response, and Internal logs it once at
 startup). Maintaining/releasing this project? See [`RELEASING.md`](RELEASING.md).
 

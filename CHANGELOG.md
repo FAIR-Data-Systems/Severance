@@ -4,6 +4,12 @@ All notable changes to this project are documented here. Format loosely follows 
 
 ## [Unreleased]
 
+## [2.0.0] - 2026-11-06
+
+**Breaking -- read [Upgrading from 1.1.0](external/README.md#upgrading-from-110) first.** New required
+settings on both components (`INNIE_TOKEN`, a 32+ character `AUTH_TOKEN`), and External and Internal
+must be upgraded together. Example queries are no longer installed automatically.
+
 ### Security
 
 - External no longer accepts `multipart/form-data` request bodies (`415`), and they are refused before
@@ -112,6 +118,12 @@ All notable changes to this project are documented here. Format loosely follows 
   much transparency as Sextans-Suite, because External is where data is actually exposed. That framing is
   why the work went past documentation into the first individual research on every finding, which found
   the build-toolchain root cause and the token-free multipart path.
+- Mark Wilkinson brought the Vantage6 disclosures into scope (asking whether Severance had dealt with the
+  same problems, and whether Trivy would have caught them), and then suspected that Vantage6's own
+  advisories understated what happened and asked for a wider search. He was right: the search found two
+  incidents never published as advisories -- the compromise of their image registry, which led to the
+  digest pinning here, and the eMudhra CA compromise, which turned out to affect every published
+  Severance and facade image. He also decided that beacon-facade must refuse to run without its key.
 
 ## [1.1.0] - 2026-09-22
 

@@ -9,10 +9,9 @@ kind of flaw is to watch similar projects: when one of them publishes a flaw in 
 `Security/advisory_watch.py` tells us when a peer publishes something new (see its header for what it
 watches). This file is the result of mapping each one onto Severance.
 
-**"FIXED" means fixed in our source code.** It reaches your deployment only with the first image
-release after it -- check the `CHANGELOG.md` for the version that contains it, and the image tag in
-your `docker-compose.yml`. **Every fix listed here is newer than the 2026-09-22 images**, so as of
-2026-11-06 none of them is in a published image yet!
+**"FIXED" means fixed in our source code**, and reaches your deployment only with an image release
+that contains it. **Every fix listed here is in Severance 2.0.0** (and facades 0.2.0) -- none of them
+is in the 2026-09-22 images. Check the image tags in your `docker-compose.yml` files.
 
 | Status | Meaning |
 | --- | --- |
@@ -32,8 +31,8 @@ and in their release notes. Grouped by the kind of flaw.
 
 | What happened to Vantage6 | Could Severance have it? | Status |
 | --- | --- | --- |
-| **Their image registry was broken into (24 March - 2 April 2026).** An attacker with admin access put a malware downloader into published images *under their existing tags*; everyone who pulled those tags got it. ([notice](https://distributedlearning.ai/news/unauthorized-access-to-our-vantage6-image-registry/)) | Yes. Our images live on Docker Hub, and our `docker-compose.yml` files named them **by tag only** -- anyone who got into that account could replace an image under the same tag, and you would pull it without noticing. | **FIXED 2026-11-06** (from the next release): the compose files pin each image **by digest** (`tag@sha256:...`), so Docker refuses an image whose content has changed. **Still yours to do: take new compose files from the repo only.** |
-| **The eMudhra / emSign certificate authority was compromised (October 2026).** Eight intermediate CA keys turned out to be recoverable, so anyone could make "valid" certificates for any website. Vantage6 had to update the trusted-certificate bundles in its images. | **Yes -- this one hits us directly.** Internal makes HTTPS connections (to External and the triplestore) and trusts the operating system's certificate bundle. **The published 2026-09-22 images (Severance AND both facades) still trust the compromised `emSign ECC Root CA - G3`** (Severance's also `AAA Certificate Services`) -- so someone holding a forged certificate could pretend to be External. | **FIXED in source / next release**: images built now carry Debian's DSA-6572-1 (`ca-certificates 20250419+deb13u1`) and Alpine's updated bundle, without either root (verified 2026-11-06). **Until you have upgraded: do not let Internal reach External over a network you don't trust.** |
+| **Their image registry was broken into (24 March - 2 April 2026).** An attacker with admin access put a malware downloader into published images *under their existing tags*; everyone who pulled those tags got it. ([notice](https://distributedlearning.ai/news/unauthorized-access-to-our-vantage6-image-registry/)) | Yes. Our images live on Docker Hub, and our `docker-compose.yml` files named them **by tag only** -- anyone who got into that account could replace an image under the same tag, and you would pull it without noticing. | **FIXED in 2.0.0**: the compose files pin each image **by digest** (`tag@sha256:...`), so Docker refuses an image whose content has changed. **Still yours to do: take new compose files from the repo only.** |
+| **The eMudhra / emSign certificate authority was compromised (October 2026).** Eight intermediate CA keys turned out to be recoverable, so anyone could make "valid" certificates for any website. Vantage6 had to update the trusted-certificate bundles in its images. | **Yes -- this one hits us directly.** Internal makes HTTPS connections (to External and the triplestore) and trusts the operating system's certificate bundle. **The published 2026-09-22 images (Severance AND both facades) still trust the compromised `emSign ECC Root CA - G3`** (Severance's also `AAA Certificate Services`) -- so someone holding a forged certificate could pretend to be External. | **FIXED in 2.0.0** (facades 0.2.0): images built now carry Debian's DSA-6572-1 (`ca-certificates 20250419+deb13u1`) and Alpine's updated bundle, without either root (verified 2026-11-06). **Until you have upgraded: do not let Internal reach External over a network you don't trust.** |
 
 ### Caller input reaching something that executes it
 
@@ -64,9 +63,9 @@ Vantage6: [GHSA-hx2w](https://github.com/vantage6/vantage6/security/advisories/G
   are now opt-in (`SEED_DEMO_QUERIES=true`).
 - **FIXED 2026-10-23:** Severance refuses to start with the example token (`YesItsMe`), a short token,
   or the example encryption key. **FIXED 2026-11-06:** the facades no longer fall back to `YesItsMe`.
-- **OPEN (beacon-facade):** with `BEACON_FACADE_AUTH_KEY` unset, every caller is treated as trusted and
-  gets counts instead of yes/no answers. Documented as testing-only; it should probably refuse to run
-  in production without the key -- a decision for whoever deploys it with ERDERA.
+- **FIXED in beacon-facade 0.2.0:** with `BEACON_FACADE_AUTH_KEY` unset, every caller used to be
+  treated as trusted and got counts instead of yes/no answers. The facade now refuses to start without
+  the key, and compares it in constant time.
 
 ### Data not tied to the caller who asked for it
 
