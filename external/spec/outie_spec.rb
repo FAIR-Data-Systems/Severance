@@ -62,6 +62,17 @@ RSpec.describe 'External (outie.rb) hardening' do
     it 'refuses identical tokens' do
       expect(boot('AUTH_TOKEN' => 'c' * 40, 'INNIE_TOKEN' => 'c' * 40)).to include('must differ')
     end
+
+    it 'reads secrets from *_FILE paths (Docker secrets) instead of the environment' do
+      files = { 'AUTH_TOKEN' => 'd' * 40, 'INNIE_TOKEN' => 'e' * 40, 'ENCRYPTION_KEY_HEX' => 'cd' * 32 }.to_h do |k, v|
+        path = File.join(ROOT, "#{k.downcase}.secret")
+        File.write(path, "#{v}\n")
+        ["#{k}_FILE", path]
+      end
+      expect(boot(files.merge('ENCRYPTION_KEY_HEX' => nil))).to include('BOOTED')
+      expect(boot('AUTH_TOKEN_FILE' => "#{ROOT}/missing", 'INNIE_TOKEN' => 'b' * 40))
+        .to include('AUTH_TOKEN_FILE is set, but')
+    end
   end
 
   describe 'caller authentication' do
@@ -173,6 +184,24 @@ RSpec.describe 'External (outie.rb) hardening' do
       end
       post '/severance/queries', { query_id: 'count', bindings: {} }.to_json, user.merge(json)
       expect(last_response.status).to eq(429)
+    end
+  end
+
+  describe 'expiry sweep' do
+    it 'deletes old results and stuck jobs, never pending ones or anything recent' do
+      old = Time.now - (RESULT_TTL_HOURS * 3600) - 60
+      paths = {
+        old_result: "#{ENV['RESULTS_DIR']}/#{SecureRandom.uuid}.enc",
+        old_processing: "#{ENV['QUEUE_DIR']}/#{SecureRandom.uuid}.processing.json",
+        old_pending: "#{ENV['QUEUE_DIR']}/#{SecureRandom.uuid}.pending.json",
+        new_result: "#{ENV['RESULTS_DIR']}/#{SecureRandom.uuid}.enc"
+      }
+      paths.each { |_, p| File.write(p, 'x') }
+      %i[old_result old_processing old_pending].each { |k| File.utime(old, old, paths[k]) }
+
+      expect(sweep_expired!).to eq(results: 1, processing: 1)
+      expect(paths.transform_values { |p| File.exist?(p) })
+        .to eq(old_result: false, old_processing: false, old_pending: true, new_result: true)
     end
   end
 

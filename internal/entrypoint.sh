@@ -6,13 +6,23 @@ echo "=== Starting Severance Internal ==="
 # Ensure the queries directory exists (as root, so we can create it if needed)
 mkdir -p /queries
 
-# Seed demo queries on FIRST run only
+# Demo queries are OPT-IN. Every query in /queries is live -- anyone holding
+# External's AUTH_TOKEN can run it -- so copying examples in by default meant
+# every new install served queries the data provider never approved (one of
+# them returns person-level rows). Set SEED_DEMO_QUERIES=true to copy them in on
+# a first run (empty folder) for testing; delete the ones you don't want before
+# real data goes in.
 if [ -z "$(ls -A /queries 2>/dev/null)" ]; then
-    echo "First run detected → copying demo queries to your ./queries folder on the host..."
-    cp -r --no-preserve=ownership /demo-queries/* /queries/
-    echo "Demo queries seeded successfully."
+    if [ "${SEED_DEMO_QUERIES:-false}" = "true" ]; then
+        echo "First run, SEED_DEMO_QUERIES=true → copying demo queries to your ./queries folder..."
+        cp -r --no-preserve=ownership /demo-queries/* /queries/
+        echo "Demo queries seeded. DELETE the ones you have not approved before real data goes in!"
+    else
+        echo "./queries is empty → no queries are available until you add your own."
+        echo "(For testing, set SEED_DEMO_QUERIES=true to copy in the examples.)"
+    fi
 else
-    echo "Queries folder already exists on host → using your version."
+    echo "Using the queries in your ./queries folder."
 fi
 
 # Now fix ownership and permissions so the host user can edit everything

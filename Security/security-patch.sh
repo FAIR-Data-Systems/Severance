@@ -218,10 +218,12 @@ open_autopatch_pr() {
   (cd "${repo_path}" && gh pr create --title "${title}" --head "${branch}" --body "${body}") >&2
 }
 
+# `bundle install` first: when auto_patch_ruby_gems.rb has just bumped a gem, the new version is not
+# installed on this host yet, and `bundle exec` would fail on that instead of testing anything.
 SIN=$(patch_image sevinternal ../internal ../internal/VERSION SEVERANCE_VERSION \
-  "bundle exec rspec")
+  "bundle install --quiet && bundle exec rspec")
 SOUT=$(patch_image sevexternal ../external ../external/VERSION SEVERANCE_VERSION \
-  "bundle exec ruby check_before_filter.rb")
+  "bundle install --quiet && bundle exec rspec && bundle exec ruby check_before_filter.rb")
 
 cp inner-docker-compose-template-template.yml inner-docker-compose-template-tmp.yml
 cp outer-docker-compose-template-template.yml outer-docker-compose-template-tmp.yml

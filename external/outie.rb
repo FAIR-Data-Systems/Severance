@@ -87,7 +87,7 @@ RESULTS_DIR = ENV.fetch('RESULTS_DIR', '/data/results')
 warn '=== Environment Debug ==='
 warn "QUEUE_DIR = #{QUEUE_DIR.inspect}"
 warn "RESULTS_DIR = #{RESULTS_DIR.inspect}"
-warn "ENCRYPTION_KEY_HEX present = #{ENV['ENCRYPTION_KEY_HEX'] ? 'YES' : 'NO'}"
+warn "ENCRYPTION_KEY_HEX present = #{ENV['ENCRYPTION_KEY_HEX'] || ENV['ENCRYPTION_KEY_HEX_FILE'] ? 'YES' : 'NO'}"
 warn "RESULT_FORMAT = #{ENV['RESULT_FORMAT'].inspect}"
 warn '========================='
 
@@ -123,7 +123,22 @@ end
 # everywhere else for exactly this class of mistake (see the IRI/encoding
 # rejection paths in internal/innie.rb).
 EXAMPLE_ENCRYPTION_KEY_HEX = '0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef'
-raw_encryption_key_hex = ENV['ENCRYPTION_KEY_HEX']&.strip
+
+# Reads a secret from `<NAME>_FILE` (a path, e.g. a Docker secret mounted at
+# /run/secrets/...) if that is set, otherwise from `<NAME>` itself. A secret
+# in a plain environment variable is visible to anyone who can run
+# `docker inspect` or read /proc/<pid>/environ; a file can be kept readable by
+# this process only. Kept in sync with the identical helper in internal/innie.rb.
+def env_secret(name)
+  path = ENV["#{name}_FILE"].to_s.strip
+  return ENV[name] if path.empty?
+
+  File.read(path).strip
+rescue SystemCallError => e
+  abort "FATAL: #{name}_FILE is set, but #{path} cannot be read (#{e.class})."
+end
+
+raw_encryption_key_hex = env_secret('ENCRYPTION_KEY_HEX')&.strip
 if raw_encryption_key_hex.nil? || raw_encryption_key_hex.empty?
   abort 'FATAL: ENCRYPTION_KEY_HEX is not set. Generate one with `openssl rand -hex 32` ' \
         'and set it identically on both External and Internal -- refusing to start with no key ' \
@@ -149,7 +164,7 @@ MIN_SECRET_LENGTH = 32
 EXAMPLE_SECRETS = %w[YesItsMe changeme change-me secret password].freeze
 
 def load_secret!(name)
-  value = ENV[name].to_s.strip
+  value = env_secret(name).to_s.strip
   if value.empty?
     abort "FATAL: #{name} is not set. Generate one with `openssl rand -hex 32` -- " \
           'refusing to start with authentication disabled.'
@@ -175,6 +190,47 @@ UUID_RE = /\A\h{8}-\h{4}-\h{4}-\h{4}-\h{12}\z/.freeze
 
 # Content-Type for query results (json or csv)
 CONTENT_TYPE = ENV['RESULT_FORMAT'] == 'csv' ? 'text/csv' : 'application/sparql-results+json'
+
+# How long an uncollected result, or a job stuck in "processing" (Internal
+# took it but never answered), may sit on disk. Results are encrypted, but an
+# answer nobody collects should not wait forever for whoever eventually learns
+# its job id -- and without this, stuck jobs answered "processing" forever.
+# Pending jobs are never expired: Internal being off for a while must not lose
+# requests. 0 disables the sweep.
+RESULT_TTL_HOURS = ENV.fetch('RESULT_TTL_HOURS', 168).to_i
+
+# Deletes results and "processing" job files older than RESULT_TTL_HOURS.
+# Logs counts only, never job ids.
+#
+# @param now [Time] the reference time (injectable for tests)
+# @return [Hash] how many files of each kind were deleted
+def sweep_expired!(now = Time.now)
+  cutoff = now - (RESULT_TTL_HOURS * 3600)
+  expired = lambda do |pattern|
+    Dir[pattern].count do |path|
+      File.mtime(path) < cutoff && File.delete(path)
+    rescue Errno::ENOENT
+      false # collected or swept concurrently
+    end
+  end
+  counts = { results: expired.call("#{RESULTS_DIR}/*.enc"),
+             processing: expired.call("#{QUEUE_DIR}/*.processing.json") }
+  warn "Expired #{counts[:results]} uncollected result(s), #{counts[:processing]} stuck job(s)" if counts.values.sum.positive?
+  counts
+end
+
+if RESULT_TTL_HOURS.positive? && !Sinatra::Application.test?
+  Thread.new do
+    loop do
+      begin
+        sweep_expired!
+      rescue StandardError => e
+        warn "⚠ Expiry sweep failed: #{e.class} - #{e.message}"
+      end
+      sleep 3600
+    end
+  end
+end
 
 # Create required directories on startup
 begin

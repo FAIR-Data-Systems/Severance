@@ -121,8 +121,10 @@ module QueryAnnotationParser
 
         # warn "Parsing decorator line: #{clean}  "
 
-        # Section header like "tags:", "defaults:", "enumerate:", "parameters:"
-        if clean.end_with?(':')
+        # Section header like "tags:", "defaults:", "enumerate:", "parameters:". A list item that
+        # itself ends in ':' ("- country:", which opens an enumerate list) is not a header: it
+        # used to be taken for one, silently dropping every enumerate list in every query.
+        if clean.end_with?(':') && !clean.start_with?('- ')
           key = clean.chomp(':').strip
           # warn "Found section header: #{key}  "
 
