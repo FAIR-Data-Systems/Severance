@@ -79,6 +79,8 @@ line to `.env` only if you have a real reason to change one:
 | `MAX_RESULT_BYTES` | `268435456` (256 MB) | Largest (encrypted) answer Internal may push back. **If your queries return bigger answers than this, raise it, or they will be refused!** |
 | `MAX_CATALOG_BYTES` | `2097152` (2 MB) | Largest query catalogue Internal may register. |
 | `AUTH_FAIL_LIMIT` / `AUTH_FAIL_WINDOW` | `10` / `60` | After this many failed logins from one address within this many seconds, that address gets `429` until the window passes. This applies to callers only, never to Internal. |
+| `RESULT_TTL_HOURS` | `168` (7 days) | Answers nobody collects, and requests Internal took but never answered, are deleted after this long. Requests still waiting in the queue are never deleted. `0` turns this off. |
+| `ENCRYPTION_KEY_HEX_FILE`, `AUTH_TOKEN_FILE`, `INNIE_TOKEN_FILE` | *(unset)* | The path of a file holding that secret (e.g. a Docker secret under `/run/secrets/`), instead of putting it in `.env`. A value in `.env` ends up in the container's environment, where anyone who can run `docker inspect` can read it. |
 | `PUBLIC_BASE_URL` | *(unset)* | Behind a reverse proxy, set this to the public address callers use (e.g. `https://severance.example.org`), so the `Location` header points there and not at the proxy's internal address. |
 
 **Behind a reverse proxy?** Make sure it passes on each caller's real address. If it doesn't, every
@@ -170,6 +172,11 @@ started Internal yet, so it hasn't told External about any queries. Keep going.
 
 ### 3. Submit a query request
 
+This test asks for `count`, one of Severance's example queries. **Internal only has it if you start
+Internal with `SEED_DEMO_QUERIES=true` for this test** -- see
+[Managing your queries](../internal/README.md#managing-your-queries). Otherwise, use the `query_id`
+of a query you have installed yourself.
+
     curl -v -X POST http://localhost:3000/severance/queries -H "Content-Type: application/json" -H "Authorization: Bearer $AUTH_TOKEN" -d '{
         "query_id": "count",
         "bindings": {
@@ -222,7 +229,8 @@ Now you should get:
     count
     123
 
-If you see this, **your installation works end to end.** If you still see `"status": "processing"`
+If you see this, **your installation works end to end.** If you get `200 OK` but an EMPTY answer,
+Internal does not have a query called `count` -- see step 3. If you still see `"status": "processing"`
 after a reasonable wait, check that Internal actually started without errors and can reach both
 External and your triplestore -- see [Installing Internal](../internal/README.md). If External's log
 shows `Auth failed` every time Internal polls, **Internal's `INNIE_TOKEN` does not match External's.**
@@ -244,6 +252,9 @@ later!**
      token shorter than 32 characters, now stops External from starting!**
    - Add `INNIE_TOKEN=` with a *different* value from `openssl rand -hex 32`.
 5. **Edit Internal's `.env`:** add the exact same `INNIE_TOKEN` line.
+   **Then look in Internal's `./queries` folder!** Older versions copied the example queries in
+   automatically, and every query in that folder can be run by anyone with `AUTH_TOKEN`. **Delete
+   every example you have not approved** -- `patient_filter.rq` returns individual people's records.
 6. **Copy the new `docker-compose.yml` files** from the repo into both folders, as you did when you
    installed.
 7. **Start External, then Internal**, and run the tests above again.
@@ -263,7 +274,7 @@ These are the errors you can get back, and what they mean:
 | `415` | You sent a `multipart/form-data` body. **Severance never accepts multipart!** Send JSON (or a url-encoded form). |
 | `413 payload_too_large` | Your request is too big. Query requests are limited to 64 KB by default. |
 | `400` | The request is malformed: bad JSON, not UTF-8, a missing `query_id` or one with characters other than letters, digits, `_` and `-`, or `bindings` that isn't a JSON object. |
-| `404` | No such job -- or the job ID is not a properly formed UUID. **Answers can be collected only ONCE!** After you have fetched one, its job is gone. |
+| `404` | No such job -- or the job ID is not a properly formed UUID. **Answers can be collected only ONCE!** After you have fetched one, its job is gone. Answers nobody collects are deleted after 7 days (`RESULT_TTL_HOURS`). |
 
 ## `/severance/available_queries`
 
@@ -327,12 +338,16 @@ Using the example above, a valid request body would be:
 variables it declares.
 
 **You CANNOT** run a `query_id` that Internal hasn't installed -- Internal refuses to run it. **But you
-will NOT get an error back!** External can't see which queries Internal has, so it accepts the
-request, and your job then says `"processing"` forever. **Always check `available_queries` first, and
-spell the `query_id` exactly!**
+will NOT get an error!** External can't see which queries Internal has, so it accepts the request,
+and the answer you get back is simply EMPTY -- exactly what you would get if no data matched. **An
+empty answer does NOT prove there is no matching data!** Always check `available_queries` first, and
+spell the `query_id` exactly.
 
 **You CANNOT** add or invent new variables either. Any binding the query doesn't declare is simply
 ignored -- it never reaches the query.
+
+**You CANNOT** send a value a query doesn't allow. If a query lists its allowed values (an array in its
+`examples`, in `available_queries`), any other value gets the same EMPTY answer -- not an error.
 
 **`bindings` MUST be a JSON object** (`{"name": "value", ...}`), not a list -- anything else is
 refused with `400`.

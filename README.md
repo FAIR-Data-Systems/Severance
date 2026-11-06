@@ -56,11 +56,11 @@ the query you need doesn't exist there yet, you must negotiate with the data pro
 4. Follows web standards for queued processes.
 5. External and Internal components are fully independent (containers); Internal can be switched off and External will continue to queue (no lost requests).
 6. No external connection to the secure area -- Inside to Outside only.
-7. Impossible to DoS the Internal component -- the queue is accessed one query at a time.
+7. Flooding External with requests cannot overload Internal or your triplestore -- Internal takes queries from the queue one at a time. (A flood CAN fill the queue and delay genuine requests; External caps the queue length -- see `MAX_PENDING_JOBS` in the External guide.)
 8. Data in the "intermediate store" is immediately encrypted upon arrival from the Triplestore.
 9. Data is decrypted and deleted as soon as it is called by the user -- no second chances, but also lower risk.
-10. Unencrypted data never touches the disk; on both Internal and External, it is only ever held in-memory.
-11. Variables containing unencrypted data, and the web server cache, are "zero'd out" and cleared from memory immediately after data is encrypted, minimizing the time unencrypted data is stored in memory.
+10. Severance never writes query results to disk unencrypted; on both Internal and External, unencrypted results are only ever held in memory. (Your operating system can still swap memory to disk -- if that matters to you, turn swap off or encrypt it on both servers.)
+11. Variables holding unencrypted results, and the web server's response buffer, are overwritten with zeros and released as soon as they are no longer needed, to keep unencrypted data in memory for as short a time as possible. This is best effort: Ruby can make internal copies of data that no program can reach to erase.
 12. The Internal component runs with a RAM-based tempfile system, so attempts to write to `/tmp` do not go to disk.
 13. Code content of the Docker containers is minimal -- a very low profile for security risks.
 14. Containers both run as unprivileged users.
@@ -69,6 +69,9 @@ the query you need doesn't exist there yet, you must negotiate with the data pro
 17. Each encrypted answer is bound to its own job: an answer moved into another job's slot fails to decrypt instead of being handed to the wrong caller.
 18. Request sizes, answer sizes and the length of the queue are all capped, so a flood of requests cannot fill External's disk.
 19. Binding values and the final, filled-in query text are never written to the logs.
+20. **Nothing is queryable until the data provider puts it there.** Internal starts with an empty query folder -- example queries are copied in only when explicitly asked for, for testing.
+21. Severance only ever reads: a query that would change data (SPARQL Update) is refused before it is offered or run -- on top of the read-only triplestore account you must use anyway.
+22. If a query lists the values a variable may take (`#+ enumerate:`), no other value is accepted.
 
 ### Known vulnerabilities in our images -- published in full
 

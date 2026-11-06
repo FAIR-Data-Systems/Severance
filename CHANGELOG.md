@@ -18,6 +18,20 @@ All notable changes to this project are documented here. Format loosely follows 
 - First individual reachability research on every remaining finding (`Security/build_register.py`,
   `MANUAL_DECISIONS`), replacing the bulk "patch immediately" default that the register previously
   applied to every row -- including rows with no fix available.
+- **Example queries are no longer copied into Internal's `./queries` automatically.** Every query there
+  is live to anyone with `AUTH_TOKEN`, and one example (`patient_filter.rq`) returns person-level rows.
+  Set `SEED_DEMO_QUERIES=true` to copy them in for testing. **Existing installs: delete any example
+  in `./queries` you have not approved.**
+- Internal refuses any query containing a SPARQL Update operation (`INSERT`, `DELETE`, `DROP`, `CLEAR`,
+  `LOAD`, ...): it is left out of the catalogue and never run. Previously `validate_query` was a stub,
+  and a read-only triplestore account was the only safeguard.
+- `#+ enumerate:` lists are now enforced: a binding with an unlisted value is refused. They were
+  advertised to callers but never checked -- and the parser silently dropped every one of them (a list
+  item like `- country:` was taken for a section header).
+- Uncollected results, and jobs stuck in "processing", are deleted after `RESULT_TTL_HOURS` (default 168,
+  i.e. 7 days). Pending jobs are never expired.
+- Secrets can be read from files: `ENCRYPTION_KEY_HEX_FILE`, `AUTH_TOKEN_FILE`, `INNIE_TOKEN_FILE`,
+  `TRIPLESTORE_PASS_FILE` (e.g. Docker secrets), keeping them out of the container environment.
 
 - Query bindings are now substituted in a single pass over the original query text.
 - Internal authenticates its calls to External with a new required `INNIE_TOKEN` (in addition to the
@@ -39,6 +53,14 @@ All notable changes to this project are documented here. Format loosely follows 
 - New optional External settings: `PUBLIC_BASE_URL` (used for the `Location` header instead of the request's
   `Host`), plus the size/queue/throttle limits above. All are documented in `external/README.md`.
 - `external/check_before_filter.rb` updated to the two-token auth model.
+- A job Internal refuses (unknown `query_id`, missing query file, malformed bindings, unlisted
+  `enumerate` value, update query) now gets an empty answer promptly, instead of saying "processing"
+  forever. Internal no longer logs "Registration completed" after a failed registration, and a 401 there
+  now points at a mismatched `INNIE_TOKEN`.
+- Test-only gems (`rspec`, plus `rack-test` for External) are in a `test` group, excluded from both
+  images. `security-patch.sh` now runs External's spec as well as `check_before_filter.rb`, and runs
+  `bundle install` before testing. Internal's suite passes again (the enumerate parser bug above was
+  its one failure), so the pipeline's Internal auto-patches are no longer always reverted.
 - `Security/security-patch.sh` gives every container it starts throwaway `AUTH_TOKEN`/`INNIE_TOKEN`
   values as well as the encryption key. Since the token requirement above, both services refused to start
   with only the key, so every OS-patch step and boot smoke test would silently have done nothing.
