@@ -66,41 +66,41 @@ MANUAL_DECISIONS = {
     # no-new-privileges (so setuid binaries gain nothing), External drops all capabilities except
     # the five its entrypoint needs to chown its volumes, and neither container has an fstab, a
     # login session, or any tool below invoked by our code.
-    "CVE-2026-76642": ("ACCEPT", "util-linux mount(8) post-hook privilege escalation: needs a "
+    "CVE-2026-76642": ("NOT REACHABLE", "util-linux mount(8) post-hook privilege escalation: needs a "
                        "local user running setuid mount against fstab entries. No fstab entries, "
                        "no-new-privileges set, mount never invoked. " + _OS_NO_FIX),
-    "CVE-2026-78408": ("ACCEPT", "util-linux `nsenter --join-cgroup`: needs a privileged operator "
+    "CVE-2026-78408": ("NOT REACHABLE", "util-linux `nsenter --join-cgroup`: needs a privileged operator "
                        "to run nsenter into an attacker-controlled target. nsenter is never run in "
                        "these containers. " + _OS_NO_FIX),
-    "CVE-2026-78409": ("ACCEPT", "util-linux X-mount.subdir symlink escape: needs an "
+    "CVE-2026-78409": ("NOT REACHABLE", "util-linux X-mount.subdir symlink escape: needs an "
                        "fstab-authorized X-mount.subdir entry and setuid mount. Neither exists "
                        "here. " + _OS_NO_FIX),
-    "CVE-2026-78410": ("ACCEPT", "util-linux restricted bind mount source redirection: needs fstab "
+    "CVE-2026-78410": ("NOT REACHABLE", "util-linux restricted bind mount source redirection: needs fstab "
                        "entries and setuid mount. Neither exists here. " + _OS_NO_FIX),
-    "CVE-2026-54369": ("ACCEPT", "libacl symlink traversal: needs a privileged process calling "
+    "CVE-2026-54369": ("NOT REACHABLE", "libacl symlink traversal: needs a privileged process calling "
                        "acl_get/set_file on attacker-controlled paths. Ruby and our code never call "
                        "libacl. " + _OS_NO_FIX),
-    "CVE-2025-69720": ("ACCEPT", "ncurses: stack overflow in the `infocmp` command-line tool only. "
+    "CVE-2025-69720": ("NOT REACHABLE", "ncurses: stack overflow in the `infocmp` command-line tool only. "
                        "Never run. " + _OS_NO_FIX),
-    "CVE-2026-119373": ("ACCEPT", "SQLite FTS5 heap overflow: needs attacker-populated FTS5 "
+    "CVE-2026-119373": ("NOT REACHABLE", "SQLite FTS5 heap overflow: needs attacker-populated FTS5 "
                         "tables. libsqlite3 is in the base image but nothing in Severance opens a "
                         "SQLite database. " + _OS_NO_FIX),
-    "CVE-2026-119374": ("ACCEPT", "SQLite FTS5 secure-delete overflow: needs an attacker-supplied "
+    "CVE-2026-119374": ("NOT REACHABLE", "SQLite FTS5 secure-delete overflow: needs an attacker-supplied "
                         "database file. Severance never opens one. " + _OS_NO_FIX),
-    "CVE-2026-119379": ("ACCEPT", "SQLite session-extension changeset overflow: needs "
+    "CVE-2026-119379": ("NOT REACHABLE", "SQLite session-extension changeset overflow: needs "
                         "attacker-supplied changesets. Severance never uses SQLite. " + _OS_NO_FIX),
-    "CVE-2026-16742": ("ACCEPT", "systemd-homed privilege escalation: homed is not running (no "
+    "CVE-2026-16742": ("NOT REACHABLE", "systemd-homed privilege escalation: homed is not running (no "
                        "systemd at all in these containers; libsystemd0/libudev1 are just shared "
                        "libraries). " + _OS_NO_FIX),
-    "CVE-2026-9538": ("ACCEPT", "Perl Archive::Tar memory exhaustion on a crafted tar: perl-base "
+    "CVE-2026-9538": ("NOT REACHABLE", "Perl Archive::Tar memory exhaustion on a crafted tar: perl-base "
                       "is only used by dpkg/debconf maintainer scripts, never on untrusted tar "
                       "files. Debian status: fix_deferred. " + _OS_NO_FIX),
-    "CVE-2026-76844": ("ACCEPT", "zlib gz_write() overflow after a failed write(): only in zlib's "
+    "CVE-2026-76844": ("NOT REACHABLE", "zlib gz_write() overflow after a failed write(): only in zlib's "
                        "gzFile API (gzwrite/gzprintf). Ruby's Zlib extension implements gzip on the "
                        "z_stream deflate API and never calls the gzFile functions; no other "
                        "process here uses zlib. (Trivy's title for this entry wrongly names "
                        "webpack-dev-middleware; the description is the zlib bug.) " + _OS_NO_FIX),
-    "CVE-2026-85091": ("ACCEPT", "zlib gz_vacate() overflow via gzprintf() after a write stall: "
+    "CVE-2026-85091": ("NOT REACHABLE", "zlib gz_vacate() overflow via gzprintf() after a write stall: "
                        "gzFile API only, never called (see CVE-2026-76844). " + _OS_NO_FIX),
 
     # --- Ruby default gems: per image, because reachability differs -----------------------------
@@ -136,7 +136,7 @@ MANUAL_DECISIONS = {
 # Package-wide dispositions, for packages whose findings all share the same reachability argument
 # regardless of the individual CVE. Checked after MANUAL_DECISIONS, before the defaults.
 PACKAGE_DECISIONS = {
-    "linux-libc-dev": ("ACCEPT", "Kernel CVE reported against linux-libc-dev, which contains only "
+    "linux-libc-dev": ("NOT REACHABLE", "Kernel CVE reported against linux-libc-dev, which contains only "
                        "C header files (2,558 .h files, no executable code -- verified "
                        "2026-11-06). A container never runs its image's kernel; it runs the host's. "
                        "This package should not be in the runtime image at all (it comes with "
@@ -203,7 +203,9 @@ def decide(image, cve, packages, exposure, control, has_fix, shadowed, prior):
         # pins a fixed version and annotate_gem_shadowing.rb confirmed bundle exec never loads the
         # flagged copy): that decision predates the fix and was never reviewed against it.
         if not (prior[0] != "SHADOWED" and shadowed == "yes"):
-            return prior
+            # "ACCEPT" was renamed "NOT REACHABLE" on 2026-11-08 (same meaning; "accepted" reads as
+            # "risk accepted" to partners). A hand-written row in an older register keeps its notes.
+            return ("NOT REACHABLE", prior[1]) if prior[0] == "ACCEPT" else prior
     if shadowed == "yes":
         return SHADOWED_DECISION
     return DEFAULT_DECISIONS[(exposure, control, has_fix)]

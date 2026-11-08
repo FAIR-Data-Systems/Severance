@@ -4,6 +4,12 @@ All notable changes to this project are documented here. Format loosely follows 
 
 ## [Unreleased]
 
+### Changed
+
+- The vulnerability register's `ACCEPT` decision is now called `NOT REACHABLE`. The meaning is unchanged --
+  reviewed individually, and nothing in Severance can reach the vulnerable code -- but "accepted" reads as
+  "known risk, tolerated", which it never meant.
+
 ## [2.0.0] - 2026-11-06
 
 **Breaking -- read [Upgrading from 1.1.0](external/README.md#upgrading-from-110) first.** New required
