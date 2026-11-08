@@ -45,7 +45,22 @@ ACCEPT_HEADER = RESULT_FORMAT == 'csv' ? 'text/csv' : 'application/sparql-result
 # this class of mistake (see InvalidIriError/InvalidEncodingError). Kept in
 # sync with the identical check in external/outie.rb.
 EXAMPLE_ENCRYPTION_KEY_HEX = '0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef'
-raw_encryption_key_hex = ENV['ENCRYPTION_KEY_HEX']&.strip
+
+# Reads a secret from `<NAME>_FILE` (a path, e.g. a Docker secret mounted at
+# /run/secrets/...) if that is set, otherwise from `<NAME>` itself. A secret
+# in a plain environment variable is visible to anyone who can run
+# `docker inspect` or read /proc/<pid>/environ; a file can be kept readable by
+# this process only. Kept in sync with the identical helper in external/outie.rb.
+def env_secret(name)
+  path = ENV["#{name}_FILE"].to_s.strip
+  return ENV[name] if path.empty?
+
+  File.read(path).strip
+rescue SystemCallError => e
+  abort "FATAL: #{name}_FILE is set, but #{path} cannot be read (#{e.class})."
+end
+
+raw_encryption_key_hex = env_secret('ENCRYPTION_KEY_HEX')&.strip
 if raw_encryption_key_hex.nil? || raw_encryption_key_hex.empty?
   abort 'FATAL: ENCRYPTION_KEY_HEX is not set. Generate one with `openssl rand -hex 32` ' \
         'and set it identically on both External and Internal -- refusing to start with no key ' \
@@ -64,7 +79,7 @@ ENCRYPTION_KEY = [raw_encryption_key_hex].pack('H*')
 # come from an allow-listed address), so the IP check is defense in depth and
 # this secret is the actual credential. Must be set identically on External and
 # must differ from External's AUTH_TOKEN (the caller-facing token).
-INNIE_TOKEN = ENV['INNIE_TOKEN'].to_s.strip
+INNIE_TOKEN = env_secret('INNIE_TOKEN').to_s.strip
 if INNIE_TOKEN.length < 32
   abort 'FATAL: INNIE_TOKEN is not set or is shorter than 32 characters. Generate one with ' \
         '`openssl rand -hex 32` and set it identically on External and Internal.'
@@ -296,12 +311,79 @@ def escape_for_sparql(value)
   end
 end
 
-# Placeholder for future query validation logic.
+# Raised for a query Severance must never run. Like InvalidIriError, the
+# message never carries caller-supplied values.
+class UnsafeQueryError < StandardError; end
+
+# Raised when a binding's value is not one of the values its query's
+# `#+ enumerate:` block allows.
+class EnumerateViolationError < StandardError; end
+
+# SPARQL 1.1 Update operation keywords (none of them is a keyword of the
+# query language). Severance only ever reads.
+SPARQL_UPDATE_KEYWORDS = %w[INSERT DELETE LOAD CLEAR DROP CREATE ADD MOVE COPY WITH].freeze
+
+# One scan, left to right, so that strings, IRIs and comments are consumed
+# whole before anything inside them could be mistaken for a keyword:
+# long and short string literals, an IRIREF, a comment, a variable, a
+# prefixed name (ex:delete, bif:contains), and finally bare words.
+SPARQL_TOKEN = /"""[\s\S]*?"""|'''[\s\S]*?'''|"(?:[^"\\\n]|\\.)*"|'(?:[^'\\\n]|\\.)*'|<[^<>"{}|^`\\\s]*>|#[^\n]*|[?$]\w+|[\w.-]*:[\w.-]*|[A-Za-z_]+/.freeze
+
+# Whether `query` contains a SPARQL Update operation (as a bare keyword, not
+# inside a string, IRI, comment, variable or prefixed name).
+def sparql_update?(query)
+  query.scan(SPARQL_TOKEN).any? { |token| SPARQL_UPDATE_KEYWORDS.include?(token.upcase) }
+end
+
+# Refuses a query that would change the triplestore. The deployment docs
+# require a read-only triplestore account, but nothing checked it, and a
+# query file that writes or deletes -- by mistake or by tampering with
+# QUERY_DIR -- would otherwise run with whatever rights that account really
+# has. This makes the read-only account the second line of defence instead
+# of the only one. Called on every query file when the catalogue is built
+# (so one is never advertised) and again on the bound query just before it runs.
 #
-# @param _query [String] The SPARQL query to validate
-# @return [Boolean] Currently always returns true
-def validate_query(_query)
-  true # ← stub – replace with real validation later
+# @param query [String] The SPARQL query to validate
+# @raise [UnsafeQueryError] if the query contains a SPARQL Update operation
+def validate_query(query)
+  raise UnsafeQueryError, 'query contains a SPARQL Update operation (Severance only runs read queries)' if sparql_update?(query)
+
+  true
+end
+
+# Refuses a binding value its query's `#+ enumerate:` block does not allow.
+# The catalogue has always advertised these lists (as the `examples` arrays
+# a UI shows as a drop-down), but nothing enforced them, so a caller could
+# send any value. Keys are matched case-insensitively, like substitution
+# itself; an IRI value may be sent with or without <...>.
+#
+# @param bindings [Hash] the caller's bindings
+# @param enumerate [Hash] variable name => list of allowed values
+# @raise [EnumerateViolationError] naming the variable, never the value
+def check_enumerated!(bindings, enumerate)
+  return if enumerate.nil? || enumerate.empty?
+
+  allowed = enumerate.to_h { |k, values| [k.to_s.downcase, Array(values).map { |v| v.to_s.strip }] }
+  bindings.each do |k, v|
+    list = allowed[k.to_s.downcase]
+    next if list.nil? || v.nil?
+
+    value = v.to_s.strip
+    value = value[1..-2] if value.start_with?('<') && value.end_with?('>')
+    next if list.include?(value)
+
+    raise EnumerateViolationError, "Binding '#{k}' is not one of the values this query allows"
+  end
+end
+
+# Logs why a job was refused and pushes back the safe, zero-row result (see
+# empty_result_body), so the caller gets an answer promptly instead of a job
+# that says "processing" forever.
+def reject_job(uuid, reason)
+  warn "⚠ Rejected job #{uuid}: #{reason}"
+  push_result(uuid, empty_result_body)
+rescue StandardError => e
+  warn "⚠ Failed to push rejection result for job #{uuid}: #{e.class} - #{e.message}"
 end
 
 # Executes `query` against the triplestore at `uri`, using real HTTP Digest
@@ -385,7 +467,14 @@ def process_queries
 
   all_queries = {}
   # Build the final list that Outie expects
-  available_queries = queries.map do |metadata|
+  available_queries = queries.filter_map do |metadata|
+    begin
+      validate_query(metadata['query'].to_s)
+    rescue UnsafeQueryError => e
+      warn "⚠ Not offering query #{metadata['query_id'].inspect}: #{e.message}"
+      next
+    end
+
     # Compute smart bindings from defaults + enumerate
     bindings = metadata['defaults'].dup || {}
 
@@ -410,7 +499,11 @@ def process_queries
       'endpoint_in_url' => metadata['endpoint_in_url']
     }.compact # remove nil keys
 
-    all_queries[metadata['query_id']] = queryhash # for quick lookup later when processing jobs
+    # For quick lookup later when processing jobs. Internal-only keys (the enumerate lists, which
+    # check_enumerated! enforces) are added to this copy only, so the catalogue pushed to
+    # External keeps exactly the shape it always had.
+    all_queries[metadata['query_id']] = queryhash.merge('enumerate' => metadata['enumerate'] || {})
+    queryhash
   end
 
   begin
@@ -432,10 +525,9 @@ def process_queries
         warn " • #{q['query_id']} (#{q['title'] || 'no title'})"
       end
     else
-      warn "⚠ Failed to register queries: #{res.code} #{res.message}"
+      warn "⚠ Failed to register queries: #{res.code} #{res.message}" \
+           "#{' -- check that INNIE_TOKEN matches External\'s' if res.code == '401'}"
     end
-
-    warn "Registration completed for #{available_queries.size} queries"
   rescue StandardError => e
     warn "❌ Failed to push queries on startup: #{e.class} - #{e.message}"
   end
@@ -502,15 +594,25 @@ if __FILE__ == $PROGRAM_NAME
   # files `process_queries` actually found by scanning QUERY_DIR itself)
   # closes this structurally: no key can exist there that wasn't a real,
   # already-installed query's own declared query_id.
+  #
+  # Refused jobs get the safe empty result (reject_job) rather than just being
+  # skipped: External had already moved a pulled job to "processing", so a
+  # skipped one said "processing" to its caller forever.
   unless all_queries.key?(query_id)
-    warn "Unknown or disallowed query_id: #{query_id.inspect}"
+    reject_job(uuid, "unknown or disallowed query_id #{query_id.to_s[0, 64].inspect}")
+    sleep POLL_INTERVAL
+    next
+  end
+
+  unless bindings.is_a?(Hash)
+    reject_job(uuid, "bindings for query #{query_id} are not an object")
     sleep POLL_INTERVAL
     next
   end
 
   query_path = "#{QUERY_DIR}/#{query_id}.rq"
   unless File.exist?(query_path)
-    warn "Query file missing: #{query_path}"
+    reject_job(uuid, "query file missing: #{query_path}")
     sleep POLL_INTERVAL
     next
   end
@@ -520,25 +622,22 @@ if __FILE__ == $PROGRAM_NAME
 
   # === Bind grlc-style placeholders (?_key_type) ===
   begin
+    check_enumerated!(bindings, all_queries[query_id]['enumerate'])
     query = substitute_grlc_bindings(query, bindings, all_queries[query_id]['variable_types'])
-  rescue InvalidIriError, InvalidEncodingError => e
+    # The file was checked when the catalogue was built, but it may have been
+    # edited since (QUERY_DIR is re-read every poll), so check what actually runs.
+    validate_query(query)
+  rescue InvalidIriError, InvalidEncodingError, EnumerateViolationError, UnsafeQueryError => e
     # Reject the job outright rather than executing anything -- see the
     # security note on InvalidIriError above. Pushes a safe, zero-row
     # result so the caller resolves promptly instead of hanging until
     # their own poll ceiling, without ever running the tainted query or
     # echoing back anything attacker-controlled.
-    warn "⚠ Rejected job #{uuid} for query #{query_id}: #{e.message}"
-    begin
-      push_result(uuid, empty_result_body)
-    rescue StandardError => push_error
-      warn "⚠ Failed to push rejection result for job #{uuid}: #{push_error.class} - #{push_error.message}"
-    end
+    reject_job(uuid, "query #{query_id}: #{e.message}")
     sleep POLL_INTERVAL
     next
   end
   warn "Query #{query_id} bound (#{bindings.size} binding(s)); values are not logged"
-
-  validate_query(query) # currently a no-op, but can be expanded with real validation logic later
 
   # === Execute against triplestore with authentication ===
   uri = URI(TRIPLESTORE_URL)
@@ -552,7 +651,7 @@ if __FILE__ == $PROGRAM_NAME
   # External for the next job) already handles this with a
   # rescue/log/sleep/next pattern; this call never got the same treatment.
   begin
-    res = execute_sparql_query(uri, query, ACCEPT_HEADER, ENV['TRIPLESTORE_USER'], ENV['TRIPLESTORE_PASS'])
+    res = execute_sparql_query(uri, query, ACCEPT_HEADER, ENV['TRIPLESTORE_USER'], env_secret('TRIPLESTORE_PASS'))
   rescue StandardError => e
     warn "⚠ Failed to reach triplestore for job #{uuid}: #{e.class} - #{e.message}"
     begin

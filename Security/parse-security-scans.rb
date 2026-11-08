@@ -1,8 +1,26 @@
 require 'json'
 require 'csv'
 
+# Which findings get recorded, by Trivy result Class:
+#   os-pkgs    -- CRITICAL and HIGH only. The base OS carries many MEDIUM/LOW findings with no fix and
+#                 no realistic path from our code; listing them all would bury the ones that matter.
+#   lang-pkgs  -- EVERY severity (Ruby gems). These are the libraries our own code calls, and a
+#   (and any     MEDIUM there can be directly reachable: rack's GHSA-2j8w-xcrc-x985 (MEDIUM, 2026-10-30)
+#   other)       made Rack::Request#base_url return a forged Host header verbatim -- which outie.rb
+#                used for its Location header -- and the old CRITICAL/HIGH-only filter hid it.
+# security-patch.sh therefore scans at every severity; this is where the line is drawn.
+#
+# UNKNOWN is recorded for OS packages too: an advisory nobody has scored yet is not a low-risk one.
+# Debian's DSA-6572-1 (ca-certificates still trusting the compromised eMudhra/emSign CA hierarchy,
+# October 2026) is reported by Trivy only as UNKNOWN -- a CRITICAL/HIGH-only filter dropped it.
+OS_SEVERITIES = %w[CRITICAL HIGH UNKNOWN].freeze
+
+def recorded?(result, severity)
+  result['Class'] == 'os-pkgs' ? OS_SEVERITIES.include?(severity) : true
+end
+
 def parse_trivy_json(output)
-  # Parse Trivy JSON output and filter for CRITICAL and HIGH vulnerabilities.
+  # Parse Trivy JSON output and keep the findings recorded? selects (see above).
   # Expects JSON with a 'Results' key containing an array of result objects.
 
   data = JSON.parse(output)
@@ -14,8 +32,8 @@ def parse_trivy_json(output)
     next unless result['Vulnerabilities'] # Skip if no vulnerabilities
 
     result['Vulnerabilities'].each do |vuln|
-      severity = vuln['Severity']&.upcase
-      next unless %w[CRITICAL HIGH].include?(severity)
+      severity = vuln['Severity']&.upcase || 'UNKNOWN'
+      next unless recorded?(result, severity)
 
       bundler_shadowed =
         if vuln.key?('ShadowedByBundler')
@@ -61,7 +79,7 @@ def write_csv_output(vulns, output_file)
     removed = File.delete(output_file) if File.exist?(output_file)
     return if removed.nil?
 
-    return "No CRITICAL or HIGH vulnerabilities found. Removed stale '#{output_file}' from a previous run."
+    return "No recorded vulnerabilities found. Removed stale '#{output_file}' from a previous run."
   end
 
   headers = %w[Target VulnerabilityID Package InstalledVersion FixedVersion Severity Title
@@ -84,9 +102,9 @@ def write_csv_output(vulns, output_file)
     end
   end
 
-  critical_count = vulns.count { |v| v['Severity'] == 'CRITICAL' }
-  high_count = vulns.count { |v| v['Severity'] == 'HIGH' }
-  "Generated CSV file '#{output_file}' with #{vulns.length} vulnerabilities (CRITICAL: #{critical_count}, HIGH: #{high_count})."
+  counts = vulns.map { |v| v['Severity'] }.tally.sort_by { |s, _| %w[CRITICAL HIGH MEDIUM LOW UNKNOWN].index(s) || 9 }
+  "Generated CSV file '#{output_file}' with #{vulns.length} vulnerabilities " \
+    "(#{counts.map { |s, n| "#{s}: #{n}" }.join(', ')})."
 end
 
 # Check for valid input

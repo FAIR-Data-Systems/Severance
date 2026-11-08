@@ -45,8 +45,16 @@ trap 'rm -f "${AUTOPATCH_QUEUE}"' EXIT
 # CHANGELOG.md's erb/resolv entries), vs a real, still-reachable one.
 #
 # All progress output below goes to stderr; the final `fairdatasystems/
-# <name>:<timestamp>` tag is the only thing written to stdout, so callers can
+# <name>:<timestamp>@sha256:<digest>` reference is the only thing written to stdout, so callers can
 # capture it with `tag=$(patch_image ...)` while still seeing live progress.
+# Random, single-use secrets for a container that only ever exists to be patched or smoke-tested here,
+# never to serve real traffic. Printed as `docker run` -e flags (hex only, so safe unquoted).
+throwaway_env() {
+  echo "-e ENCRYPTION_KEY_HEX=$(openssl rand -hex 32)" \
+       "-e AUTH_TOKEN=$(openssl rand -hex 32)" \
+       "-e INNIE_TOKEN=$(openssl rand -hex 32)"
+}
+
 patch_image() {
   local name="$1" build_dir="$2" version_file="$3" version_arg="$4" test_cmd="${5:-}"
   local build_tag="${name}:build-${timestamp}"
@@ -72,10 +80,23 @@ patch_image() {
   # it. This key is thrown away with the container once patching is done; it
   # never serves real traffic, so it doesn't need to be the deployment's
   # real key.
-  local patch_key
-  patch_key=$(openssl rand -hex 32)
-  docker run -d --name "${name}" -e "ENCRYPTION_KEY_HEX=${patch_key}" "${build_tag}" >&2
+  #
+  # Since the 2026-10-23 hardening, outie.rb also refuses to start without AUTH_TOKEN and INNIE_TOKEN
+  # (>= 32 chars, different from each other), and innie.rb without INNIE_TOKEN -- same fail-closed
+  # reasoning, same consequence if missing here: every patch step below would silently do nothing.
+  # throwaway_env generates a fresh, never-reused set for each container this script starts.
+  docker run -d --name "${name}" $(throwaway_env) "${build_tag}" >&2
   sleep 2
+  # Every image must actually start before anything else happens to it -- not only auto-patched ones.
+  # Without this, an image that crashes on boot (e.g. beacon-facade after a Ruby 3.4 base-image bump
+  # dropped the `csv` default gem, 2026-11) was patched "successfully" -- every docker exec failing
+  # quietly -- and pushed.
+  if ! docker ps --filter "name=^${name}\$" --filter "status=running" --format '{{.Names}}' | grep -q .; then
+    echo "FATAL: ${name} does not start -- not patching or pushing it. Its log:" >&2
+    docker logs "${name}" 2>&1 | tail -20 >&2
+    docker rm -f "${name}" >/dev/null 2>&1 || true
+    exit 1
+  fi
   echo "updating ${name}" >&2
   docker exec "${name}" apt-get -y update >&2
   docker exec "${name}" apt-get -y dist-upgrade --fix-missing >&2
@@ -88,7 +109,7 @@ patch_image() {
   docker rmi "${build_tag}" >/dev/null 2>&1 || true
 
   echo "trivy" >&2
-  trivy image --scanners vuln --format json --severity CRITICAL,HIGH --timeout 1800s \
+  trivy image --scanners vuln --format json --timeout 1800s \
     "${working_tag}" > "${outputfile}"
 
   if [ -f "${build_dir}/Gemfile" ]; then
@@ -120,7 +141,7 @@ patch_image() {
       if [ "${rebuild_ok}" -eq 0 ] && [ "${tests_ok}" -eq 0 ]; then
         docker rm -f "${name}-autopatch-smoketest" >/dev/null 2>&1 || true
         docker run -d --name "${name}-autopatch-smoketest" \
-          -e "ENCRYPTION_KEY_HEX=$(openssl rand -hex 32)" "${autopatch_build_tag}" >&2
+          $(throwaway_env) "${autopatch_build_tag}" >&2
         sleep 3
         if docker ps --filter "name=${name}-autopatch-smoketest" --filter "status=running" \
              --format '{{.Names}}' | grep -q "^${name}-autopatch-smoketest\$"; then
@@ -132,8 +153,7 @@ patch_image() {
       if [ "${rebuild_ok}" -eq 0 ] && [ "${tests_ok}" -eq 0 ] && [ "${boot_ok}" -eq 0 ]; then
         echo "auto-patch verified: build OK, tests OK, boot OK -- keeping the change and re-patching/re-scanning" >&2
         docker rm -f "${name}" >/dev/null 2>&1 || true
-        patch_key=$(openssl rand -hex 32)
-        docker run -d --name "${name}" -e "ENCRYPTION_KEY_HEX=${patch_key}" "${autopatch_build_tag}" >&2
+        docker run -d --name "${name}" $(throwaway_env) "${autopatch_build_tag}" >&2
         sleep 2
         docker exec "${name}" apt-get -y update >&2
         docker exec "${name}" apt-get -y dist-upgrade --fix-missing >&2
@@ -142,7 +162,7 @@ patch_image() {
         docker commit "${name}" "${working_tag}" >&2
         docker stop "${name}" >/dev/null
         docker rm "${name}" >/dev/null
-        trivy image --scanners vuln --format json --severity CRITICAL,HIGH --timeout 1800s \
+        trivy image --scanners vuln --format json --timeout 1800s \
           "${working_tag}" > "${outputfile}"
         ruby "${SCRIPT_DIR}/annotate_gem_shadowing.rb" "${outputfile}" "${build_dir}" >&2 || true
 
@@ -186,9 +206,22 @@ Co-Authored-By: Claude Sonnet 5 <noreply@anthropic.com>" \
   echo "push" >&2
   docker push "${working_tag}" >&2
   echo "pushed" >&2
+
+  # Pin the compose files to this exact image by digest, not by tag alone. A tag can be re-pointed by
+  # anyone who gets push access to the registry; a digest cannot. That is exactly what happened to
+  # Vantage6 in March 2026: an attacker with admin access to their registry put a malware downloader
+  # into images under their existing tags, and everyone who pulled those tags got it. With
+  # `tag@sha256:...`, docker refuses an image whose content doesn't match. No digest = no pin = stop.
+  local digest
+  digest=$(docker inspect --format '{{range .RepoDigests}}{{println .}}{{end}}' "${working_tag}" \
+    | grep "^fairdatasystems/${name}@sha256:" | head -1 | cut -d@ -f2)
+  if [ -z "${digest}" ]; then
+    echo "FATAL: no registry digest for ${working_tag} after push -- not writing a tag-only pin" >&2
+    exit 1
+  fi
   echo "END" >&2
 
-  echo "${working_tag}"
+  echo "${working_tag}@${digest}"
 }
 
 # Opens a PR for a repo with a queued auto-patch commit. $1 = repo_path, $2 = branch, $3 = title.
@@ -208,10 +241,12 @@ open_autopatch_pr() {
   (cd "${repo_path}" && gh pr create --title "${title}" --head "${branch}" --body "${body}") >&2
 }
 
+# `bundle install` first: when auto_patch_ruby_gems.rb has just bumped a gem, the new version is not
+# installed on this host yet, and `bundle exec` would fail on that instead of testing anything.
 SIN=$(patch_image sevinternal ../internal ../internal/VERSION SEVERANCE_VERSION \
-  "bundle exec rspec")
+  "bundle install --quiet && bundle exec rspec")
 SOUT=$(patch_image sevexternal ../external ../external/VERSION SEVERANCE_VERSION \
-  "bundle exec ruby check_before_filter.rb")
+  "bundle install --quiet && bundle exec rspec && bundle exec ruby check_before_filter.rb")
 
 cp inner-docker-compose-template-template.yml inner-docker-compose-template-tmp.yml
 cp outer-docker-compose-template-template.yml outer-docker-compose-template-tmp.yml
