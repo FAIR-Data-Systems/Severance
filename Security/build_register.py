@@ -104,20 +104,25 @@ MANUAL_DECISIONS = {
                        "gzFile API only, never called (see CVE-2026-76844). " + _OS_NO_FIX),
 
     # --- Ruby default gems: per image, because reachability differs -----------------------------
-    ("sevinternal", "CVE-2026-80212"): ("ACCEPT", "resolv 0.2.3 (Ruby default gem) IS loaded -- "
-                       "net-http requires it -- but only for the Resolv::IPv4/IPv6::Regex address "
-                       "patterns (net-http lib/net/http.rb). Name lookups go through "
-                       "TCPSocket/getaddrinfo, so the vulnerable DNS-response decoder "
-                       "(Resolv::DNS) is never run. Verified 2026-11-06 in the built image."),
-    ("sevinternal", "CVE-2026-80213"): ("ACCEPT", "resolv 0.2.3: Resolv::DNS::MessageEncoder writes "
-                       "over-long labels with a wrapped length octet. Same reasoning as "
-                       "CVE-2026-80212: resolv is loaded (net-http) only for its IPv4/IPv6 address "
-                       "regexes; Resolv::DNS never encodes or sends a query here -- lookups use "
-                       "getaddrinfo. MEDIUM, first visible 2026-11-06 once gem findings were "
-                       "recorded at every severity."),
-    ("sevinternal", "CVE-2026-41316"): ("ACCEPT", "erb 4.0.2 (Ruby default gem) is never loaded by "
-                       "innie.rb (verified 2026-11-06 via $LOADED_FEATURES in the built image), and "
-                       "the bug also needs Marshal.load of attacker data, which innie.rb never does."),
+    # sevinternal runs plain `ruby innie.rb`, not `bundle exec`, so annotate_gem_shadowing.rb's
+    # bundle-exec-based check does not apply to it. Since the 2026-11-08 auto-patch (Gemfile pins
+    # erb 6.0.7 / resolv 0.8.1, installed into the image), RubyGems activates the newest installed
+    # version even without Bundler: verified in the published image fairdatasystems/sevinternal:
+    # 2026-11-08 that `require 'resolv'` loads resolv-0.8.1. The flagged default copies cannot be
+    # uninstalled (RubyGems refuses for default gems), so they stay on disk, unloaded.
+    ("sevinternal", "CVE-2026-80212"): ("SHADOWED", "resolv 0.2.3 is Ruby's default copy, still on disk "
+                       "but not loaded: innie.rb loads the installed resolv 0.8.1 (verified in the "
+                       "published 2026-11-08 image). Before that fix it was loaded, but only for "
+                       "net-http's IPv4/IPv6 address regexes -- the vulnerable DNS decoder "
+                       "(Resolv::DNS) never ran, since lookups use getaddrinfo."),
+    ("sevinternal", "CVE-2026-80213"): ("SHADOWED", "resolv 0.2.3 is Ruby's default copy, still on disk "
+                       "but not loaded: innie.rb loads the installed resolv 0.8.1 (verified in the "
+                       "published 2026-11-08 image). The bug (Resolv::DNS::MessageEncoder) was never "
+                       "reachable anyway: Resolv::DNS never encodes or sends a query here."),
+    ("sevinternal", "CVE-2026-41316"): ("SHADOWED", "erb 4.0.2 is Ruby's default copy, on disk but never "
+                       "loaded by innie.rb (verified via $LOADED_FEATURES); erb 6.0.7 is installed "
+                       "too since 2026-11-08. The bug also needs Marshal.load of attacker data, which "
+                       "innie.rb never does."),
 
     # --- Network-exposed and genuinely reachable: fixed in source, drops out once rebuilt ------
     ("sevexternal", "GHSA-5v64-555j-wjxm"): ("PATCH", "REACHABLE WITHOUT A TOKEN. Rack's multipart "
