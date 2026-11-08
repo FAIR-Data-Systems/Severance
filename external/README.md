@@ -61,11 +61,21 @@ any `PATCH` row for `sevexternal`, and ask us about it.
   requests and push answers back.
 - **`ALLOWED_INTERNAL_IPS`** -- the addresses Internal is allowed to call from. Each entry can be a bare
   IP (`192.168.1.100`), a CIDR range (`192.168.1.0/24`), or the word `localhost`. **This is NOT a
-  replacement for `INNIE_TOKEN`!** A request to Internal's part of the API must come from one of
-  these addresses AND carry `INNIE_TOKEN`. An IP address is not proof of identity: proxies and Docker
-  networking can make a stranger's traffic look like it comes from an allowed address. **Keep this
-  list as short as possible.** During testing you can include `localhost`/`127.0.0.1`; in production
-  it should contain only Internal's real address.
+  replacement for `INNIE_TOKEN`** -- a request to Internal's part of the API must come from one of these
+  addresses AND carry `INNIE_TOKEN`. An IP address is not proof of identity: proxies and Docker
+  networking can make a stranger's traffic look like it comes from an allowed address.
+
+  **Treat this list as your second line of defence if `INNIE_TOKEN` ever leaks -- so keep it as tight as
+  you possibly can.** Our own penetration testing made the point concrete: with a broad range (we tested
+  `172.16.0.0/12`), a leaked `INNIE_TOKEN` is on its own enough to impersonate Internal -- read every
+  caller's queued query, silently swallow their jobs, or (with the encryption key too) feed callers fake
+  answers. Narrowing the list to **Internal's exact address** made those same valid-token requests fail
+  with `403`, before the token was even checked, while the real Internal kept working. So: during testing
+  you can include `localhost`/`127.0.0.1`; in production it should contain **only Internal's real
+  address**, pinned (don't leave a wide CIDR in place). Two caveats -- a container's IP can change when it
+  is recreated (pin it, or use the narrowest subnet that only Internal can be on), and if a proxy or NAT
+  sits in front of External and flattens every source to one address, this check can't tell callers apart
+  (see the "failed-login throttle" note below for the same root cause).
 - **Everything marked "DO NOT CHANGE"** -- leave it alone unless you have read the code and know exactly
   what you're doing.
 
@@ -311,6 +321,24 @@ These are the errors you can get back, and what they mean:
 | `413 payload_too_large` | Your request is too big. Query requests are limited to 64 KB by default. |
 | `400` | The request is malformed: bad JSON, not UTF-8, a missing `query_id` or one with characters other than letters, digits, `_` and `-`, or `bindings` that isn't a JSON object. |
 | `404` | No such job -- or the job ID is not a properly formed UUID. **Answers can be collected only ONCE!** After you have fetched one, its job is gone. Answers nobody collects are deleted after 7 days (`RESULT_TTL_HOURS`). |
+
+## Treat the job URL as a secret
+
+When you submit, External replies with a `Location` URL ending in a random job ID (a 122-bit value that
+**cannot** be guessed or enumerated -- there is no "list jobs" endpoint, and a wrong ID just returns
+`404`). That URL is also the only thing that identifies the job: **whoever holds the URL and the
+`AUTH_TOKEN` can collect the answer** -- and because an answer can be collected only once, collecting it
+*takes it away* from whoever submitted. Severance does **not** separately check that the collector is the
+same client that submitted (every caller shares one `AUTH_TOKEN`, so at this layer they are
+indistinguishable). Our penetration testing confirmed this: given a job's URL, a second holder of the
+token collected the answer and the original caller then got `404`.
+
+In the normal single-caller deployment (one REDCap front end) there is no "other caller", so this is
+not an exposure -- but it does mean you must **keep the job URL confidential in transit and at rest**:
+run External behind **HTTPS**, and don't let the full URL leak into proxy/access logs, browser history,
+or a `Referer` header. If you ever have **several independent callers** sharing the token, treat a job
+URL like a one-time password between the submitter and External. (Tying a result to a specific caller
+would need per-caller tokens with job ownership -- a design change, not currently implemented.)
 
 ## `/severance/available_queries`
 
