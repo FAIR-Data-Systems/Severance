@@ -1,7 +1,7 @@
 services:
 
   internal:
-    image: fairdatasystems/sevinternal:2026-09-22
+    image: fairdatasystems/sevinternal:2026-11-08@sha256:44062071cb996b28f474dbb928f41ca873972182fcc14748eab65250c3d1c723
     restart: always
     security_opt:
       - "no-new-privileges:true"

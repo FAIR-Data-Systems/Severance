@@ -1,6 +1,6 @@
 services:
   external:
-    image: fairdatasystems/sevexternal:2026-09-22
+    image: fairdatasystems/sevexternal:2026-11-08@sha256:cb8b447eb7eded887d44ddb097454233b0276f130048e0b88720f96dadf6b9d2
     restart: always
     security_opt:
       - "no-new-privileges:true"
