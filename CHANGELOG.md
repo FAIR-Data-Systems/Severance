@@ -4,6 +4,16 @@ All notable changes to this project are documented here. Format loosely follows 
 
 ## [Unreleased]
 
+### Documentation
+
+- Documented, from a penetration test of 2.0.0, when the failed-login throttle can lock out legitimate
+  callers: if callers reach External from the same apparent source address (a reverse proxy that hides the
+  real client address, or some Docker published-port setups), an attacker can trip the shared per-address
+  limit with wrong tokens and briefly deny service -- an availability issue, never a data disclosure.
+  `external/README.md` gains a "failed-login throttle" section (restrict the port, forward real client IPs,
+  or turn the throttle down), and the top-level README's threat model gains a matching item. No code change:
+  the throttle's per-address keying is correct; this is a deployment consideration.
+
 ### Changed
 
 - The vulnerability register's `ACCEPT` decision is now called `NOT REACHABLE`. The meaning is unchanged --

@@ -78,14 +78,50 @@ line to `.env` only if you have a real reason to change one:
 | `MAX_REQUEST_BYTES` | `65536` (64 KB) | Largest query request a caller may send. |
 | `MAX_RESULT_BYTES` | `268435456` (256 MB) | Largest (encrypted) answer Internal may push back. **If your queries return bigger answers than this, raise it, or they will be refused!** |
 | `MAX_CATALOG_BYTES` | `2097152` (2 MB) | Largest query catalogue Internal may register. |
-| `AUTH_FAIL_LIMIT` / `AUTH_FAIL_WINDOW` | `10` / `60` | After this many failed logins from one address within this many seconds, that address gets `429` until the window passes. This applies to callers only, never to Internal. |
+| `AUTH_FAIL_LIMIT` / `AUTH_FAIL_WINDOW` | `10` / `60` | After this many failed logins from one address within this many seconds, that address gets `429` until the window passes. This applies to callers only, never to Internal. **Read the "failed-login throttle" note below before you deploy -- in some setups this can lock out your real callers.** A very high `AUTH_FAIL_LIMIT` effectively turns the throttle off. |
 | `RESULT_TTL_HOURS` | `168` (7 days) | Answers nobody collects, and requests Internal took but never answered, are deleted after this long. Requests still waiting in the queue are never deleted. `0` turns this off. |
 | `ENCRYPTION_KEY_HEX_FILE`, `AUTH_TOKEN_FILE`, `INNIE_TOKEN_FILE` | *(unset)* | The path of a file holding that secret (e.g. a Docker secret under `/run/secrets/`), instead of putting it in `.env`. A value in `.env` ends up in the container's environment, where anyone who can run `docker inspect` can read it. |
 | `PUBLIC_BASE_URL` | *(unset)* | Behind a reverse proxy, set this to the public address callers use (e.g. `https://severance.example.org`), so the `Location` header points there and not at the proxy's internal address. |
 
-**Behind a reverse proxy?** Make sure it passes on each caller's real address. If it doesn't, every
-caller looks like the same address, and **one caller with a wrong token locks ALL your callers out**
-for `AUTH_FAIL_WINDOW` seconds!
+### The failed-login throttle, and when it can lock out your real callers
+
+External counts **failed** logins and, after `AUTH_FAIL_LIMIT` of them from one **source address**
+within `AUTH_FAIL_WINDOW` seconds, answers that address `429` until the window passes. This stops
+someone trying to *guess* the token online. It is keyed on the source address on purpose: a failed
+request carries a wrong token, and an attacker just changes the wrong token every time, so the address
+is the only thing stable enough to count. (**This never affects Internal** -- its own routes are exempt,
+so the query pipeline keeps running even while callers are being throttled.)
+
+**The catch: the throttle can only tell callers apart by the source address External actually sees.**
+If two callers reach External looking like the *same* address, they share one bucket -- so anyone who
+can reach the port and send wrong tokens can push that shared bucket over the limit and **lock out your
+real caller(s)** for `AUTH_FAIL_WINDOW` seconds, over and over, without ever knowing the token. This is
+an **availability** problem only (a short, self-healing outage of *submitting and collecting*; no data
+is ever exposed by it, and queued work still gets answered) -- but it is worth getting right.
+
+Callers end up sharing one apparent address in exactly the cases where the real client address never
+reaches External:
+
+- **A reverse proxy in front of External that doesn't forward the real client address** -- every
+  request then looks like it came from the proxy. (If you set one up, forward `X-Forwarded-For`, and
+  make sure the proxy itself rate-limits.)
+- **The default published-port setup on some Docker hosts**, where Docker's own userland proxy can make
+  every external request look like it came from the Docker gateway address. (Seen in our own testing.)
+
+**How to manage it -- pick whichever fits your deployment:**
+
+1. **Restrict who can reach the port.** If only your trusted front end (for our partners, this is their
+   REDCap server) can open a connection to External's port at all -- a firewall rule / security group
+   limiting port 3000 to that host -- then no attacker can send failed logins in the first place, and
+   none of this applies. This is the strongest option and the recommended one when you have a single,
+   known caller.
+2. **Make the real client address reach External.** Then the throttle isolates each address: an
+   attacker sending wrong tokens only locks out *their own* address, never your caller's. Do this if the
+   port must be broadly reachable.
+3. **Turn the throttle down or off.** With a single controlled caller and a 32-character random
+   `AUTH_TOKEN`, online guessing is already hopeless, so the throttle buys little. Setting
+   `AUTH_FAIL_LIMIT` very high (or `0`) removes the lockout risk entirely. Only do this if the port
+   isn't open to the world (option 1), otherwise you give up the anti-guessing protection.
 
 **What `AUTH_TOKEN` actually protects against -- read this, don't assume.** `AUTH_TOKEN` is a static,
 unsigned secret. **Anyone who ever obtains it can replay it indefinitely, from anywhere** -- a leaked
