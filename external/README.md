@@ -61,11 +61,21 @@ any `PATCH` row for `sevexternal`, and ask us about it.
   requests and push answers back.
 - **`ALLOWED_INTERNAL_IPS`** -- the addresses Internal is allowed to call from. Each entry can be a bare
   IP (`192.168.1.100`), a CIDR range (`192.168.1.0/24`), or the word `localhost`. **This is NOT a
-  replacement for `INNIE_TOKEN`!** A request to Internal's part of the API must come from one of
-  these addresses AND carry `INNIE_TOKEN`. An IP address is not proof of identity: proxies and Docker
-  networking can make a stranger's traffic look like it comes from an allowed address. **Keep this
-  list as short as possible.** During testing you can include `localhost`/`127.0.0.1`; in production
-  it should contain only Internal's real address.
+  replacement for `INNIE_TOKEN`** -- a request to Internal's part of the API must come from one of these
+  addresses AND carry `INNIE_TOKEN`. An IP address is not proof of identity: proxies and Docker
+  networking can make a stranger's traffic look like it comes from an allowed address.
+
+  **Treat this list as your second line of defence if `INNIE_TOKEN` ever leaks -- so keep it as tight as
+  you possibly can.** Our own penetration testing made the point concrete: with a broad range (we tested
+  `172.16.0.0/12`), a leaked `INNIE_TOKEN` is on its own enough to impersonate Internal -- read every
+  caller's queued query, silently swallow their jobs, or (with the encryption key too) feed callers fake
+  answers. Narrowing the list to **Internal's exact address** made those same valid-token requests fail
+  with `403`, before the token was even checked, while the real Internal kept working. So: during testing
+  you can include `localhost`/`127.0.0.1`; in production it should contain **only Internal's real
+  address**, pinned (don't leave a wide CIDR in place). Two caveats -- a container's IP can change when it
+  is recreated (pin it, or use the narrowest subnet that only Internal can be on), and if a proxy or NAT
+  sits in front of External and flattens every source to one address, this check can't tell callers apart
+  (see the "failed-login throttle" note below for the same root cause).
 - **Everything marked "DO NOT CHANGE"** -- leave it alone unless you have read the code and know exactly
   what you're doing.
 
@@ -78,14 +88,50 @@ line to `.env` only if you have a real reason to change one:
 | `MAX_REQUEST_BYTES` | `65536` (64 KB) | Largest query request a caller may send. |
 | `MAX_RESULT_BYTES` | `268435456` (256 MB) | Largest (encrypted) answer Internal may push back. **If your queries return bigger answers than this, raise it, or they will be refused!** |
 | `MAX_CATALOG_BYTES` | `2097152` (2 MB) | Largest query catalogue Internal may register. |
-| `AUTH_FAIL_LIMIT` / `AUTH_FAIL_WINDOW` | `10` / `60` | After this many failed logins from one address within this many seconds, that address gets `429` until the window passes. This applies to callers only, never to Internal. |
+| `AUTH_FAIL_LIMIT` / `AUTH_FAIL_WINDOW` | `10` / `60` | After this many failed logins from one address within this many seconds, that address gets `429` until the window passes. This applies to callers only, never to Internal. **Read the "failed-login throttle" note below before you deploy -- in some setups this can lock out your real callers.** A very high `AUTH_FAIL_LIMIT` effectively turns the throttle off. |
 | `RESULT_TTL_HOURS` | `168` (7 days) | Answers nobody collects, and requests Internal took but never answered, are deleted after this long. Requests still waiting in the queue are never deleted. `0` turns this off. |
 | `ENCRYPTION_KEY_HEX_FILE`, `AUTH_TOKEN_FILE`, `INNIE_TOKEN_FILE` | *(unset)* | The path of a file holding that secret (e.g. a Docker secret under `/run/secrets/`), instead of putting it in `.env`. A value in `.env` ends up in the container's environment, where anyone who can run `docker inspect` can read it. |
 | `PUBLIC_BASE_URL` | *(unset)* | Behind a reverse proxy, set this to the public address callers use (e.g. `https://severance.example.org`), so the `Location` header points there and not at the proxy's internal address. |
 
-**Behind a reverse proxy?** Make sure it passes on each caller's real address. If it doesn't, every
-caller looks like the same address, and **one caller with a wrong token locks ALL your callers out**
-for `AUTH_FAIL_WINDOW` seconds!
+### The failed-login throttle, and when it can lock out your real callers
+
+External counts **failed** logins and, after `AUTH_FAIL_LIMIT` of them from one **source address**
+within `AUTH_FAIL_WINDOW` seconds, answers that address `429` until the window passes. This stops
+someone trying to *guess* the token online. It is keyed on the source address on purpose: a failed
+request carries a wrong token, and an attacker just changes the wrong token every time, so the address
+is the only thing stable enough to count. (**This never affects Internal** -- its own routes are exempt,
+so the query pipeline keeps running even while callers are being throttled.)
+
+**The catch: the throttle can only tell callers apart by the source address External actually sees.**
+If two callers reach External looking like the *same* address, they share one bucket -- so anyone who
+can reach the port and send wrong tokens can push that shared bucket over the limit and **lock out your
+real caller(s)** for `AUTH_FAIL_WINDOW` seconds, over and over, without ever knowing the token. This is
+an **availability** problem only (a short, self-healing outage of *submitting and collecting*; no data
+is ever exposed by it, and queued work still gets answered) -- but it is worth getting right.
+
+Callers end up sharing one apparent address in exactly the cases where the real client address never
+reaches External:
+
+- **A reverse proxy in front of External that doesn't forward the real client address** -- every
+  request then looks like it came from the proxy. (If you set one up, forward `X-Forwarded-For`, and
+  make sure the proxy itself rate-limits.)
+- **The default published-port setup on some Docker hosts**, where Docker's own userland proxy can make
+  every external request look like it came from the Docker gateway address. (Seen in our own testing.)
+
+**How to manage it -- pick whichever fits your deployment:**
+
+1. **Restrict who can reach the port.** If only your trusted front end (for our partners, this is their
+   REDCap server) can open a connection to External's port at all -- a firewall rule / security group
+   limiting port 3000 to that host -- then no attacker can send failed logins in the first place, and
+   none of this applies. This is the strongest option and the recommended one when you have a single,
+   known caller.
+2. **Make the real client address reach External.** Then the throttle isolates each address: an
+   attacker sending wrong tokens only locks out *their own* address, never your caller's. Do this if the
+   port must be broadly reachable.
+3. **Turn the throttle down or off.** With a single controlled caller and a 32-character random
+   `AUTH_TOKEN`, online guessing is already hopeless, so the throttle buys little. Setting
+   `AUTH_FAIL_LIMIT` very high (or `0`) removes the lockout risk entirely. Only do this if the port
+   isn't open to the world (option 1), otherwise you give up the anti-guessing protection.
 
 **What `AUTH_TOKEN` actually protects against -- read this, don't assume.** `AUTH_TOKEN` is a static,
 unsigned secret. **Anyone who ever obtains it can replay it indefinitely, from anywhere** -- a leaked
@@ -275,6 +321,24 @@ These are the errors you can get back, and what they mean:
 | `413 payload_too_large` | Your request is too big. Query requests are limited to 64 KB by default. |
 | `400` | The request is malformed: bad JSON, not UTF-8, a missing `query_id` or one with characters other than letters, digits, `_` and `-`, or `bindings` that isn't a JSON object. |
 | `404` | No such job -- or the job ID is not a properly formed UUID. **Answers can be collected only ONCE!** After you have fetched one, its job is gone. Answers nobody collects are deleted after 7 days (`RESULT_TTL_HOURS`). |
+
+## Treat the job URL as a secret
+
+When you submit, External replies with a `Location` URL ending in a random job ID (a 122-bit value that
+**cannot** be guessed or enumerated -- there is no "list jobs" endpoint, and a wrong ID just returns
+`404`). That URL is also the only thing that identifies the job: **whoever holds the URL and the
+`AUTH_TOKEN` can collect the answer** -- and because an answer can be collected only once, collecting it
+*takes it away* from whoever submitted. Severance does **not** separately check that the collector is the
+same client that submitted (every caller shares one `AUTH_TOKEN`, so at this layer they are
+indistinguishable). Our penetration testing confirmed this: given a job's URL, a second holder of the
+token collected the answer and the original caller then got `404`.
+
+In the normal single-caller deployment (one REDCap front end) there is no "other caller", so this is
+not an exposure -- but it does mean you must **keep the job URL confidential in transit and at rest**:
+run External behind **HTTPS**, and don't let the full URL leak into proxy/access logs, browser history,
+or a `Referer` header. If you ever have **several independent callers** sharing the token, treat a job
+URL like a one-time password between the submitter and External. (Tying a result to a specific caller
+would need per-caller tokens with job ownership -- a design change, not currently implemented.)
 
 ## `/severance/available_queries`
 

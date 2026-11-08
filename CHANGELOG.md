@@ -4,6 +4,27 @@ All notable changes to this project are documented here. Format loosely follows 
 
 ## [Unreleased]
 
+### Documentation
+
+- A penetration test of 2.0.0 (deployed per the install docs, with a read-only Virtuoso user and real
+  CARE-SM synthetic data) found **no way to crash either service or read data beyond the pre-approved
+  query** -- SPARQL injection via bindings, type-confusion, reaching Internal-only routes past the IP
+  filter, and ~20 crash payloads were all blocked, and a planted cross-graph canary never leaked. It did
+  surface three **deployment** considerations, now documented (no code changes -- the behaviours are the
+  intended ones):
+  - **Failed-login throttle lockout.** If callers reach External from the same apparent source address (a
+    reverse proxy that hides the real client address, or some Docker published-port setups), an attacker
+    can trip the shared per-address throttle with wrong tokens and briefly deny service -- availability
+    only, never disclosure. New "failed-login throttle" section in `external/README.md`.
+  - **`ALLOWED_INTERNAL_IPS` is the second line of defence if `INNIE_TOKEN` leaks.** With a wide range a
+    leaked token alone can impersonate Internal (read queued queries, swallow jobs, or -- with the key --
+    forge answers); pinning the list to Internal's exact address made those valid-token requests `403`.
+    The `ALLOWED_INTERNAL_IPS` guidance now says so explicitly.
+  - **A job URL is a bearer capability.** A finished answer is collected by its unguessable job URL plus
+    the `AUTH_TOKEN`, once, with no per-caller check -- so a leaked URL lets any token-holder take the
+    answer. New "Treat the job URL as a secret" section (run behind HTTPS, keep URLs out of logs).
+  - The top-level README threat model gains matching items (5-7).
+
 ### Changed
 
 - The vulnerability register's `ACCEPT` decision is now called `NOT REACHABLE`. The meaning is unchanged --
