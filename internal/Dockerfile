@@ -38,6 +38,8 @@ COPY --from=build /usr/local/bundle /usr/local/bundle
 # disk either way; remove it explicitly so it isn't there at all, rather
 # than just shadowed by the newer bundled copy at runtime.
 RUN gem uninstall -i /usr/local/lib/ruby/gems/3.2.0 net-imap --all --force || true
+RUN gem uninstall -i /usr/local/lib/ruby/gems/3.2.0 erb --all --force || true
+RUN gem uninstall -i /usr/local/lib/ruby/gems/3.2.0 resolv --all --force || true
 
 # json (explicitly pinned in the Gemfile) is also a default gem, and IS
 # actually used by this app (unlike net-imap) -- `bundle exec` (what
