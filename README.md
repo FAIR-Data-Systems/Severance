@@ -84,8 +84,7 @@ findings is NOT the same as a long list of risks!** Read the `Decision` column, 
 
 **A scanner cannot find flaws in Severance's own design!** For those, read
 [Security/PEER_ADVISORIES.md](Security/PEER_ADVISORIES.md): every security problem published by
-similar projects (starting with Vantage6, including two serious incidents they never published as
-advisories), whether Severance has the same kind of flaw, and which ones are still OPEN.
+similar projects, whether Severance has the same kind of flaw, and which ones are still OPEN.
 
 ### Threat model
 
